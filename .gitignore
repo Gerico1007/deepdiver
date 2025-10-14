@@ -73,6 +73,7 @@ chrome-user-data/
 # Configuration (keep template)
 !deepdiver/deepdiver.yaml
 deepdiver.yaml
+!deepdiver.yaml
 
 # Test files
 test_*.py
