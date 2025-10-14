@@ -25,7 +25,7 @@ BROWSER_SETTINGS:
   headless: false
   cdp_url: http://localhost:9222
   user_data_dir: /tmp/chrome-deepdiver
-  timeout: 30
+  timeout: 60
   retry_attempts: 3
   wait_timeout: 10000
 

@@ -38,12 +38,14 @@ class NotebookLMAutomator:
         
         # NotebookLM specific settings
         self.base_url = self.config.get('NOTEBOOKLM_SETTINGS', {}).get('base_url', 'https://notebooklm.google.com')
-        self.timeout = self.config.get('NOTEBOOKLM_SETTINGS', {}).get('timeout', 30000)
         
         # Browser settings
         self.cdp_url = self.config.get('BROWSER_SETTINGS', {}).get('cdp_url', 'http://localhost:9222')
         self.user_data_dir = self.config.get('BROWSER_SETTINGS', {}).get('user_data_dir', '/tmp/chrome-deepdiver')
         self.headless = self.config.get('BROWSER_SETTINGS', {}).get('headless', False)
+        
+        # General timeout from browser settings (in seconds), converted to ms
+        self.timeout = self.config.get('BROWSER_SETTINGS', {}).get('timeout', 30) * 1000
         
         self.logger.info("♠️🌿🎸🧵 NotebookLMAutomator initialized")
     
@@ -123,10 +125,14 @@ class NotebookLMAutomator:
                 return False
             
             self.logger.info(f"🌐 Navigating to {self.base_url}...")
-            await self.page.goto(self.base_url, timeout=self.timeout)
+            # Use a longer timeout for navigation, and wait for a specific element
+            navigation_timeout = self.config.get('NOTEBOOKLM_SETTINGS', {}).get('login_timeout', 60) * 1000
             
-            # Wait for page to load
-            await self.page.wait_for_load_state('networkidle')
+            await self.page.goto(self.base_url, timeout=navigation_timeout)
+            
+            # Wait for a selector that indicates the main interface is loaded
+            ready_selector = 'button:has-text("Create new")'
+            await self.page.wait_for_selector(ready_selector, timeout=navigation_timeout)
             
             # Check if we're on the correct page
             current_url = self.page.url
@@ -139,6 +145,10 @@ class NotebookLMAutomator:
                 
         except Exception as e:
             self.logger.error(f"❌ Failed to navigate to NotebookLM: {e}")
+            if self.page:
+                screenshot_path = "failed_navigation_screenshot.png"
+                await self.page.screenshot(path=screenshot_path)
+                self.logger.info(f"📸 Screenshot saved to {screenshot_path}")
             return False
     
     async def check_authentication(self) -> bool:
