@@ -1,0 +1,79 @@
+# DeepDiver Configuration
+# NotebookLM Podcast Automation System
+
+BASE_PATH: ./output
+
+# Podcast generation settings
+PODCAST_SETTINGS:
+  quality: high
+  format: mp3
+  duration_limit: 30
+  language: en
+  voice: default
+  speed: normal
+
+# Session tracking configuration
+SESSION_TRACKING:
+  enabled: true
+  metadata_format: yaml
+  auto_save: true
+  session_dir: ./sessions
+  max_sessions: 100
+
+# Browser automation settings
+BROWSER_SETTINGS:
+  headless: false
+  cdp_url: http://localhost:9222
+  user_data_dir: /tmp/chrome-deepdiver
+  timeout: 30
+  retry_attempts: 3
+  wait_timeout: 10000
+
+# Content processing settings
+CONTENT_SETTINGS:
+  supported_formats:
+    - pdf
+    - docx
+    - txt
+    - md
+    - html
+  max_file_size: 50MB
+  auto_process: true
+  temp_dir: ./temp
+  cleanup_temp: true
+
+# NotebookLM specific settings
+NOTEBOOKLM_SETTINGS:
+  base_url: https://notebooklm.google.com
+  login_timeout: 60
+  upload_timeout: 120
+  generation_timeout: 300
+  download_timeout: 60
+
+# Audio output settings
+AUDIO_SETTINGS:
+  output_dir: ./output/podcasts
+  naming_pattern: "{title}_{timestamp}"
+  metadata_embed: true
+  quality_check: true
+  backup_enabled: true
+
+# Logging configuration
+LOGGING:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: ./logs/deepdiver.log
+  max_size: 10MB
+  backup_count: 5
+
+# Assembly team configuration
+ASSEMBLY_TEAM:
+  active_agents:
+    - Jerry
+    - Nyro
+    - Aureon
+    - JamAI
+    - Synth
+  session_encoding: true
+  musical_notation: true
+  glyph_display: true
