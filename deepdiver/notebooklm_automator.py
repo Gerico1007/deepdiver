@@ -11,13 +11,157 @@ Assembly Team: Jerry ⚡, Nyro ♠️, Aureon 🌿, JamAI 🎸, Synth 🧵
 import asyncio
 import logging
 import os
+import shutil
+import subprocess
 import time
+import requests
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin
 
 import yaml
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+
+
+# ═══════════════════════════════════════════════════════════════
+# CDP URL RESOLUTION - Chrome DevTools Protocol
+# ♠️ Nyro: Three-tier priority chain for multi-network support
+# ═══════════════════════════════════════════════════════════════
+
+def get_cdp_url(override: str = None, config_path: str = "deepdiver/deepdiver.yaml") -> str:
+    """
+    Get CDP (Chrome DevTools Protocol) URL using priority chain
+
+    Priority order:
+    1. override parameter (highest - explicit function call)
+    2. DEEPDIVER_CDP_URL environment variable (session-specific)
+    3. CDP_URL from config file (persistent user config)
+    4. http://localhost:9222 (fallback default)
+
+    Args:
+        override: Explicit CDP URL (e.g., from --cdp-url flag)
+        config_path: Path to configuration file
+
+    Returns:
+        CDP URL string
+
+    Examples:
+        # Command-line override (highest priority)
+        get_cdp_url('http://192.168.1.100:9222')
+
+        # Environment variable
+        export DEEPDIVER_CDP_URL=http://10.0.0.5:9222
+        get_cdp_url()  # → http://10.0.0.5:9222
+
+        # Config file
+        # deepdiver.yaml contains: CDP_URL: http://server:9222
+        get_cdp_url()  # → http://server:9222
+
+        # Fallback
+        get_cdp_url()  # → http://localhost:9222
+    """
+    # Priority 1: Explicit override parameter
+    if override:
+        return override
+
+    # Priority 2: Environment variable
+    env_cdp = os.environ.get('DEEPDIVER_CDP_URL')
+    if env_cdp:
+        return env_cdp
+
+    # Priority 3: Config file
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+                if config and 'BROWSER_SETTINGS' in config:
+                    cdp_url = config['BROWSER_SETTINGS'].get('cdp_url')
+                    if cdp_url:
+                        return cdp_url
+        except Exception:
+            pass  # Fall through to default
+
+    # Priority 4: Default localhost (Chrome DevTools Protocol standard port)
+    return 'http://localhost:9222'
+
+
+# ═══════════════════════════════════════════════════════════════
+# CHROME CDP HELPER FUNCTIONS
+# ♠️🌿🎸🧵 G.Music Assembly - Auto-launch Chrome for init
+# ═══════════════════════════════════════════════════════════════
+
+def find_chrome_executable() -> Optional[str]:
+    """
+    Find Chrome/Chromium executable on the system
+
+    Returns:
+        str: Chrome command name, or None if not found
+    """
+    candidates = ['google-chrome', 'chromium', 'chromium-browser', 'chrome']
+    for cmd in candidates:
+        if shutil.which(cmd):
+            return cmd
+    return None
+
+
+def check_chrome_cdp_running(cdp_url: str = 'http://localhost:9222') -> bool:
+    """
+    Check if Chrome CDP is running at specified URL
+
+    Args:
+        cdp_url: CDP URL to check (default: http://localhost:9222)
+
+    Returns:
+        bool: True if Chrome CDP is accessible, False otherwise
+    """
+    try:
+        # Extract host and port from CDP URL
+        if '://' in cdp_url:
+            cdp_url = cdp_url.split('://')[1]
+
+        # Handle localhost vs IP
+        if cdp_url.startswith('localhost:'):
+            port = cdp_url.split(':')[1]
+            test_url = f'http://localhost:{port}/json/version'
+        else:
+            test_url = f'http://{cdp_url}/json/version'
+
+        response = requests.get(test_url, timeout=2)
+        return response.status_code == 200
+    except:
+        return False
+
+
+def launch_chrome_cdp(port: int = 9222, user_data_dir: str = None) -> bool:
+    """
+    Launch Chrome with CDP enabled
+
+    Args:
+        port: CDP port number (default: 9222)
+        user_data_dir: Chrome user data directory
+
+    Returns:
+        bool: True if Chrome launched successfully, False otherwise
+    """
+    chrome_cmd = find_chrome_executable()
+    if not chrome_cmd:
+        return False
+
+    if user_data_dir is None:
+        user_data_dir = os.path.expanduser('~/.chrome-deepdiver')
+
+    try:
+        subprocess.Popen([
+            chrome_cmd,
+            f'--remote-debugging-port={port}',
+            f'--user-data-dir={user_data_dir}'
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        # Wait for Chrome to start
+        time.sleep(3)
+        return check_chrome_cdp_running(f'http://localhost:{port}')
+    except Exception:
+        return False
 
 
 class NotebookLMAutomator:
@@ -28,26 +172,34 @@ class NotebookLMAutomator:
     podcast generation, and file management through Playwright.
     """
     
-    def __init__(self, config_path: str = "deepdiver/deepdiver.yaml"):
-        """Initialize the NotebookLM automator with configuration."""
+    def __init__(self, config_path: str = "deepdiver/deepdiver.yaml", cdp_url_override: str = None):
+        """
+        Initialize the NotebookLM automator with configuration.
+
+        Args:
+            config_path: Path to configuration file
+            cdp_url_override: Optional CDP URL override (highest priority)
+        """
+        self.config_path = config_path
         self.config = self._load_config(config_path)
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
         self.logger = self._setup_logging()
-        
+
         # NotebookLM specific settings
         self.base_url = self.config.get('NOTEBOOKLM_SETTINGS', {}).get('base_url', 'https://notebooklm.google.com')
-        
-        # Browser settings
-        self.cdp_url = self.config.get('BROWSER_SETTINGS', {}).get('cdp_url', 'http://localhost:9222')
+
+        # Browser settings - Use CDP URL priority chain
+        self.cdp_url = get_cdp_url(override=cdp_url_override, config_path=config_path)
         self.user_data_dir = self.config.get('BROWSER_SETTINGS', {}).get('user_data_dir', '/tmp/chrome-deepdiver')
         self.headless = self.config.get('BROWSER_SETTINGS', {}).get('headless', False)
-        
+
         # General timeout from browser settings (in seconds), converted to ms
         self.timeout = self.config.get('BROWSER_SETTINGS', {}).get('timeout', 30) * 1000
-        
+
         self.logger.info("♠️🌿🎸🧵 NotebookLMAutomator initialized")
+        self.logger.info(f"🔗 CDP URL: {self.cdp_url}")
     
     def _load_config(self, config_path: str) -> Dict[str, Any]:
         """Load configuration from YAML file."""
@@ -131,7 +283,7 @@ class NotebookLMAutomator:
             await self.page.goto(self.base_url, timeout=navigation_timeout)
             
             # Wait for a selector that indicates the main interface is loaded
-            ready_selector = 'button:has-text("Create new")'
+            ready_selector = 'button[aria-label="Create new notebook"]';
             await self.page.wait_for_selector(ready_selector, timeout=navigation_timeout)
             
             # Check if we're on the correct page
@@ -243,9 +395,10 @@ class NotebookLMAutomator:
             if recent_notebooks_header:
                 try:
                     self.logger.info("📓 On main page, creating a new notebook...")
-                    await self.page.locator('button:has-text("Create new notebook")').first.click()
+                    await self.page.locator('button[aria-label="Create new notebook"]').first.click()
+                    await self.page.wait_for_load_state('networkidle')
                     # Wait for the notebook to be created and ready for sources
-                    await self.page.wait_for_selector('button:has-text("Add source")', timeout=15000)
+                    await self.page.wait_for_selector('mat-card.create-new-action-button', timeout=15000)
                     self.logger.info("✅ New notebook created.")
                 except Exception as e:
                     self.logger.error(f"❌ Failed to create a new notebook: {e}")
@@ -257,8 +410,11 @@ class NotebookLMAutomator:
             # Now we should be inside a notebook, look for the upload button.
             # This might be the same as the "Add source" button.
             upload_selectors = [
+                'mat-card.create-new-action-button',
                 'button:has-text("Add source")',
-                'button:has-text("Upload")',
+                'button:has-text("Upload file")',
+                'button[aria-label="Add source"]',
+                'button[data-testid="add-source-button"]',
                 'input[type="file"]',
             ]
             
@@ -266,7 +422,7 @@ class NotebookLMAutomator:
             for selector in upload_selectors:
                 try:
                     # Use a longer timeout for finding the upload element
-                    element = await self.page.wait_for_selector(selector, timeout=20000)
+                    element = await self.page.wait_for_selector(selector, timeout=30000)
                     if element:
                         upload_element = element
                         break
@@ -280,8 +436,12 @@ class NotebookLMAutomator:
                     self.logger.info("📸 Screenshot saved to upload_element_not_found.png")
                 return False
             
+            self.logger.info(f"Found upload element: {upload_element}")
+            upload_element_tag_name = await upload_element.evaluate('el => el.tagName')
+            self.logger.info(f"Upload element tag name: {upload_element_tag_name}")
+
             # Handle file input
-            if upload_element.tag_name == 'input' and upload_element.get_attribute('type') == 'file':
+            if upload_element_tag_name == 'INPUT' and upload_element.get_attribute('type') == 'file':
                 await upload_element.set_input_files(file_path)
             else:
                 # Click upload button and handle file dialog
@@ -413,6 +573,403 @@ class NotebookLMAutomator:
             self.logger.error(f"❌ Failed to download audio: {e}")
             return False
     
+    async def create_notebook(self) -> Optional[Dict[str, Any]]:
+        """
+        Create a new notebook and capture its identity.
+
+        Returns:
+            Optional[Dict[str, Any]]: Notebook metadata including id, url, and created_at
+                                       Returns None if creation fails
+        """
+        try:
+            if not self.page:
+                self.logger.error("❌ No browser page available")
+                return None
+
+            # Store the current URL to detect navigation
+            initial_url = self.page.url
+
+            # Multi-selector strategy for create button
+            create_selectors = [
+                'button[aria-label="Create new notebook"]',
+                'button:has-text("Create new notebook")',
+                'button:has-text("New notebook")',
+                '[data-testid="create-notebook"]',
+                'button.create-notebook-btn'
+            ]
+
+            create_button = None
+            for selector in create_selectors:
+                try:
+                    element = await self.page.wait_for_selector(selector, timeout=5000)
+                    if element:
+                        create_button = element
+                        self.logger.info(f"✅ Found create button: {selector}")
+                        break
+                except:
+                    continue
+
+            if not create_button:
+                self.logger.error("❌ Could not find 'Create new notebook' button")
+                screenshot_path = "debug/create_button_not_found.png"
+                await self.page.screenshot(path=screenshot_path)
+                self.logger.info(f"📸 Screenshot saved to {screenshot_path}")
+                return None
+
+            self.logger.info("📓 Creating new notebook...")
+            await create_button.click()
+
+            # Wait for navigation and page load (using load instead of networkidle for better reliability)
+            try:
+                await self.page.wait_for_load_state('load', timeout=15000)
+            except:
+                # If load state times out, continue anyway - the navigation might still have worked
+                self.logger.warning("⚠️ Load state timeout, but continuing...")
+                pass
+
+            # Get the new URL
+            new_url = self.page.url
+
+            # Verify we navigated away from the initial URL
+            if new_url == initial_url:
+                self.logger.warning("⚠️ URL did not change after clicking create button")
+                # Wait a bit more and try again
+                await asyncio.sleep(2)
+                new_url = self.page.url
+
+            # Extract notebook ID from URL
+            # Expected format: https://notebooklm.google.com/notebook/{notebook_id}
+            notebook_id = None
+            if '/notebook/' in new_url:
+                parts = new_url.split('/notebook/')
+                if len(parts) > 1:
+                    # Get the ID (might have query params, so split on ? first)
+                    notebook_id = parts[1].split('?')[0].split('#')[0]
+
+            if not notebook_id:
+                self.logger.warning("⚠️ Could not extract notebook ID from URL")
+                self.logger.info(f"Current URL: {new_url}")
+                # Try alternative extraction methods
+                # Some URLs might be like: /notebook/abc123/sources or /notebook/abc123/overview
+                if '/notebook/' in new_url:
+                    path_parts = new_url.split('/')
+                    notebook_idx = path_parts.index('notebook')
+                    if len(path_parts) > notebook_idx + 1:
+                        notebook_id = path_parts[notebook_idx + 1]
+
+            # Wait for notebook UI to be ready
+            try:
+                await self.page.wait_for_selector('mat-card.create-new-action-button', timeout=15000)
+                self.logger.info("✅ Notebook UI loaded successfully")
+            except:
+                self.logger.warning("⚠️ Notebook UI selector not found, but continuing...")
+
+            # Create metadata object
+            from datetime import datetime
+            notebook_data = {
+                'id': notebook_id or 'unknown',
+                'url': new_url,
+                'created_at': datetime.now().isoformat(),
+                'title': 'Untitled Notebook',  # Can be updated later
+                'sources': [],
+                'active': True
+            }
+
+            self.logger.info(f"✅ Notebook created successfully!")
+            self.logger.info(f"📋 Notebook ID: {notebook_data['id']}")
+            self.logger.info(f"🔗 Notebook URL: {notebook_data['url']}")
+
+            return notebook_data
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to create notebook: {e}")
+            if self.page:
+                try:
+                    screenshot_path = "debug/create_notebook_error.png"
+                    await self.page.screenshot(path=screenshot_path, timeout=5000)
+                    self.logger.info(f"📸 Screenshot saved to {screenshot_path}")
+                except:
+                    self.logger.warning("⚠️ Could not save screenshot")
+            return None
+
+    async def navigate_to_notebook(self, notebook_id: str = None, notebook_url: str = None) -> bool:
+        """
+        Navigate to an existing notebook by ID or URL.
+
+        Args:
+            notebook_id (str): The notebook ID to navigate to
+            notebook_url (str): The full notebook URL (alternative to notebook_id)
+
+        Returns:
+            bool: True if navigation successful, False otherwise
+        """
+        try:
+            if not self.page:
+                self.logger.error("❌ No browser page available")
+                return False
+
+            # Construct URL if only ID is provided
+            target_url = notebook_url
+            if not target_url and notebook_id:
+                target_url = f"{self.base_url}/notebook/{notebook_id}"
+
+            if not target_url:
+                self.logger.error("❌ Must provide either notebook_id or notebook_url")
+                return False
+
+            self.logger.info(f"🔄 Navigating to notebook: {target_url}")
+
+            # Navigate to the notebook URL
+            await self.page.goto(target_url, timeout=30000)
+            await self.page.wait_for_load_state('networkidle', timeout=30000)
+
+            # Verify notebook loaded successfully
+            # Multi-selector strategy for notebook verification
+            notebook_indicators = [
+                'mat-card.create-new-action-button',  # Sources panel
+                'button:has-text("Audio Overview")',  # Audio Overview button
+                '[data-testid="notebook-content"]',   # Notebook content area
+                '.notebook-title',                     # Notebook title
+                'div.sources-panel'                    # Sources panel
+            ]
+
+            notebook_loaded = False
+            for selector in notebook_indicators:
+                try:
+                    element = await self.page.wait_for_selector(selector, timeout=10000)
+                    if element:
+                        self.logger.info(f"✅ Notebook verified: {selector}")
+                        notebook_loaded = True
+                        break
+                except:
+                    continue
+
+            if not notebook_loaded:
+                self.logger.warning("⚠️ Could not verify notebook UI elements")
+                screenshot_path = "debug/notebook_verification_failed.png"
+                await self.page.screenshot(path=screenshot_path)
+                self.logger.info(f"📸 Screenshot saved to {screenshot_path}")
+                # Don't fail completely - URL navigation might still have worked
+                return True
+
+            current_url = self.page.url
+            self.logger.info(f"✅ Successfully navigated to notebook")
+            self.logger.info(f"🔗 Current URL: {current_url}")
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to navigate to notebook: {e}")
+            if self.page:
+                screenshot_path = "debug/navigate_notebook_error.png"
+                await self.page.screenshot(path=screenshot_path)
+                self.logger.info(f"📸 Screenshot saved to {screenshot_path}")
+            return False
+
+    async def share_notebook(self, email: str, role: str = 'editor') -> bool:
+        """
+        Share the current notebook with a collaborator via email.
+
+        Args:
+            email (str): Email address of the person to share with
+            role (str): Role to grant ('editor' or 'viewer')
+
+        Returns:
+            bool: True if sharing successful, False otherwise
+        """
+        try:
+            if not self.page:
+                self.logger.error("❌ No browser page available")
+                return False
+
+            self.logger.info(f"👥 Sharing notebook with {email} as {role}...")
+
+            # Multi-selector strategy for share button
+            share_button_selectors = [
+                'button[aria-label="Share"]',
+                'button:has-text("Share")',
+                'button[title="Share"]',
+                '[data-testid="share-button"]',
+                'button.share-button'
+            ]
+
+            # Find and click share button
+            share_button = None
+            for selector in share_button_selectors:
+                try:
+                    element = await self.page.wait_for_selector(selector, timeout=5000)
+                    if element:
+                        share_button = element
+                        self.logger.info(f"✅ Found share button: {selector}")
+                        break
+                except:
+                    continue
+
+            if not share_button:
+                self.logger.error("❌ Could not find share button")
+                screenshot_path = "debug/share_button_not_found.png"
+                await self.page.screenshot(path=screenshot_path, timeout=5000)
+                self.logger.info(f"📸 Screenshot saved to {screenshot_path}")
+                return False
+
+            # Click share button
+            await share_button.click()
+            await asyncio.sleep(1)
+
+            # Wait for share dialog to appear
+            dialog_selectors = [
+                'div[role="dialog"]',
+                '.share-dialog',
+                '[data-testid="share-dialog"]',
+                'div.modal'
+            ]
+
+            dialog_found = False
+            for selector in dialog_selectors:
+                try:
+                    await self.page.wait_for_selector(selector, timeout=5000)
+                    dialog_found = True
+                    self.logger.info(f"✅ Share dialog opened: {selector}")
+                    break
+                except:
+                    continue
+
+            if not dialog_found:
+                self.logger.warning("⚠️ Could not verify share dialog opened")
+
+            # Find email input field
+            email_input_selectors = [
+                'input[type="email"]',
+                'input[aria-label*="email"]',
+                'input[aria-label*="Add people"]',
+                'input[placeholder*="email"]',
+                'input.share-email-input'
+            ]
+
+            email_input = None
+            for selector in email_input_selectors:
+                try:
+                    element = await self.page.wait_for_selector(selector, timeout=5000)
+                    if element:
+                        email_input = element
+                        self.logger.info(f"✅ Found email input: {selector}")
+                        break
+                except:
+                    continue
+
+            if not email_input:
+                self.logger.error("❌ Could not find email input field")
+                screenshot_path = "debug/email_input_not_found.png"
+                await self.page.screenshot(path=screenshot_path, timeout=5000)
+                self.logger.info(f"📸 Screenshot saved to {screenshot_path}")
+                return False
+
+            # Type email address
+            await email_input.click()
+            await asyncio.sleep(0.5)
+            await self.page.keyboard.type(email, delay=50)
+            await asyncio.sleep(1)
+
+            # Select role if dropdown available
+            if role != 'editor':
+                role_selectors = [
+                    'select[aria-label*="role"]',
+                    'button[aria-label*="Can edit"]',
+                    '.role-selector'
+                ]
+
+                for selector in role_selectors:
+                    try:
+                        role_element = await self.page.wait_for_selector(selector, timeout=3000)
+                        if role_element:
+                            await role_element.click()
+                            await asyncio.sleep(0.5)
+
+                            # Click viewer option
+                            viewer_selectors = [
+                                'li:has-text("Can view")',
+                                'button:has-text("Viewer")',
+                                '[data-value="viewer"]'
+                            ]
+
+                            for viewer_sel in viewer_selectors:
+                                try:
+                                    viewer_option = await self.page.wait_for_selector(viewer_sel, timeout=2000)
+                                    if viewer_option:
+                                        await viewer_option.click()
+                                        break
+                                except:
+                                    continue
+                            break
+                    except:
+                        continue
+
+            # Send/Submit invitation
+            send_button_selectors = [
+                'button:has-text("Send")',
+                'button:has-text("Share")',
+                'button:has-text("Invite")',
+                'button[aria-label="Send"]',
+                'button[type="submit"]'
+            ]
+
+            send_button = None
+            for selector in send_button_selectors:
+                try:
+                    element = await self.page.wait_for_selector(selector, timeout=5000)
+                    if element:
+                        # Check if button is enabled
+                        is_disabled = await element.get_attribute('disabled')
+                        if not is_disabled:
+                            send_button = element
+                            self.logger.info(f"✅ Found send button: {selector}")
+                            break
+                except:
+                    continue
+
+            if not send_button:
+                self.logger.error("❌ Could not find send button")
+                # Try pressing Enter as fallback
+                self.logger.info("⚡ Trying Enter key as fallback...")
+                await self.page.keyboard.press('Enter')
+                await asyncio.sleep(2)
+            else:
+                await send_button.click()
+                await asyncio.sleep(2)
+
+            self.logger.info(f"✅ Notebook shared with {email}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to share notebook: {e}")
+            if self.page:
+                try:
+                    screenshot_path = "debug/share_error.png"
+                    await self.page.screenshot(path=screenshot_path, timeout=5000)
+                    self.logger.info(f"📸 Screenshot saved to {screenshot_path}")
+                except:
+                    pass
+            return False
+
+    async def get_page_content(self) -> Optional[str]:
+        """
+        Get the HTML content of the current page.
+
+        Returns:
+            Optional[str]: The HTML content of the page, or None if an error occurs.
+        """
+        try:
+            if not self.page:
+                self.logger.error("❌ No browser page available")
+                return None
+
+            content = await self.page.content()
+            return content
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to get page content: {e}")
+            return None
+
     async def close(self):
         """Close browser connections and cleanup resources."""
         try:
