@@ -162,29 +162,10 @@ class NotebookLMAutomator:
             if not self.page:
                 return False
             
-            # Look for authentication indicators
-            # This is a placeholder - actual selectors need to be determined
-            auth_indicators = [
-                'button[data-testid="sign-in"]',
-                'button:has-text("Sign in")',
-                'a[href*="accounts.google.com"]',
-                '.auth-button',
-                '[data-cy="sign-in"]'
-            ]
-            
-            for selector in auth_indicators:
-                try:
-                    element = await self.page.wait_for_selector(selector, timeout=5000)
-                    if element:
-                        self.logger.warning("⚠️ Authentication required - user not signed in")
-                        return False
-                except:
-                    continue
-            
-            # Look for user profile indicators
+            # Look for user profile indicators first, as they are a stronger signal
             profile_indicators = [
+                'button[aria-label*="Google Account"]', # More specific
                 'button[data-testid="user-menu"]',
-                'button:has-text("Account")',
                 '.user-avatar',
                 '[data-cy="user-menu"]'
             ]
@@ -197,12 +178,39 @@ class NotebookLMAutomator:
                         return True
                 except:
                     continue
+
+            # If no profile indicators are found, then check for sign-in buttons
+            auth_indicators = [
+                'button[data-testid="sign-in"]',
+                'button:has-text("Sign in")'
+                # Removed 'a[href*="accounts.google.com"]' as it can be a false positive
+            ]
             
-            self.logger.warning("⚠️ Authentication status unclear")
-            return False
+            for selector in auth_indicators:
+                try:
+                    element = await self.page.wait_for_selector(selector, timeout=5000)
+                    if element:
+                        self.logger.warning("⚠️ Authentication required - user not signed in")
+                        if self.page:
+                            screenshot_path = "auth_failed_screenshot.png"
+                            await self.page.screenshot(path=screenshot_path)
+                            self.logger.info(f"📸 Screenshot saved to {screenshot_path}")
+                        return False
+                except:
+                    continue
+            
+            self.logger.warning("⚠️ Authentication status unclear, assuming authenticated for now.")
+            # If neither profile nor sign-in indicators are found, it's ambiguous.
+            # Let's assume the user is logged in and let the next steps fail if they are not.
+            # This is better than getting stuck in a loop here.
+            return True
             
         except Exception as e:
             self.logger.error(f"❌ Error checking authentication: {e}")
+            if self.page:
+                screenshot_path = "auth_error_screenshot.png"
+                await self.page.screenshot(path=screenshot_path)
+                self.logger.info(f"📸 Screenshot saved to {screenshot_path}")
             return False
     
     async def upload_document(self, file_path: str) -> bool:
@@ -225,20 +233,40 @@ class NotebookLMAutomator:
                 return False
             
             self.logger.info(f"📄 Uploading document: {file_path}")
-            
-            # Look for upload button/area
+
+            # Check if we are on the main page by looking for "Recent notebooks"
+            try:
+                recent_notebooks_header = await self.page.is_visible('h2:has-text("Recent notebooks")')
+            except:
+                recent_notebooks_header = False
+
+            if recent_notebooks_header:
+                try:
+                    self.logger.info("📓 On main page, creating a new notebook...")
+                    await self.page.locator('button:has-text("Create new notebook")').first.click()
+                    # Wait for the notebook to be created and ready for sources
+                    await self.page.wait_for_selector('button:has-text("Add source")', timeout=15000)
+                    self.logger.info("✅ New notebook created.")
+                except Exception as e:
+                    self.logger.error(f"❌ Failed to create a new notebook: {e}")
+                    if self.page:
+                        await self.page.screenshot(path="create_notebook_failed.png")
+                        self.logger.info("📸 Screenshot saved to create_notebook_failed.png")
+                    return False
+
+            # Now we should be inside a notebook, look for the upload button.
+            # This might be the same as the "Add source" button.
             upload_selectors = [
+                'button:has-text("Add source")',
                 'button:has-text("Upload")',
-                'button:has-text("Add sources")',
                 'input[type="file"]',
-                '[data-testid="upload-button"]',
-                '.upload-area'
             ]
             
             upload_element = None
             for selector in upload_selectors:
                 try:
-                    element = await self.page.wait_for_selector(selector, timeout=10000)
+                    # Use a longer timeout for finding the upload element
+                    element = await self.page.wait_for_selector(selector, timeout=20000)
                     if element:
                         upload_element = element
                         break
@@ -247,6 +275,9 @@ class NotebookLMAutomator:
             
             if not upload_element:
                 self.logger.error("❌ Could not find upload element")
+                if self.page:
+                    await self.page.screenshot(path="upload_element_not_found.png")
+                    self.logger.info("📸 Screenshot saved to upload_element_not_found.png")
                 return False
             
             # Handle file input

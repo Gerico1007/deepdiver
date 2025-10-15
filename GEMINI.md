@@ -194,6 +194,17 @@ BROWSER_SETTINGS:
 - Project structure design completed
 - Ready for core automation development
 
+## 🚀 MCP Startup Configuration
+
+To ensure the DeepDiver MCP runs correctly, it must be started with the `init` subcommand.
+
+**Startup Command:**
+```bash
+python -m deepdiver.deepdive init
+```
+
+This will ensure the service enters its main loop and does not exit prematurely.
+
 ---
 
 **♠️🌿🎸🧵 G.MUSIC ASSEMBLY MODE: DEEPDIVER EDITION**
