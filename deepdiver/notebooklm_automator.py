@@ -436,14 +436,14 @@ class NotebookLMAutomator:
                         self.logger.warning("⚠️ Not on main page and not in a notebook, URL: {current_url}")
 
             # Now we should be inside a notebook, look for the upload button.
-            # This might be the same as the "Add source" button.
+            # ♠️ Nyro: Real NotebookLM upload button selector from Jerry ⚡
             upload_selectors = [
-                'mat-card.create-new-action-button',
-                'button:has-text("Add source")',
-                'button:has-text("Upload file")',
-                'button[aria-label="Add source"]',
-                'button[data-testid="add-source-button"]',
-                'input[type="file"]',
+                'button[xapscottyuploadertrigger]',                    # Primary upload trigger
+                'button[aria-label="Upload sources from your computer"]', # Upload button aria label
+                'mat-card.create-new-action-button',                   # Legacy selector
+                'button:has-text("Upload sources")',                   # Upload dialog button
+                'button:has-text("Add source")',                       # Alternative text
+                'input[type="file"]',                                  # Direct file input
             ]
             
             upload_element = None
