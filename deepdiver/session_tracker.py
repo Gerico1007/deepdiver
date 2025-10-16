@@ -103,6 +103,8 @@ class SessionTracker:
                 'status': 'active',
                 'podcasts_created': [],
                 'documents_processed': [],
+                'notebooks': [],
+                'active_notebook_id': None,
                 'notes': [],
                 'assembly_team': {
                     'leader': 'Jerry ⚡',
@@ -245,16 +247,208 @@ class SessionTracker:
             self.logger.error(f"❌ Failed to add document to session: {e}")
             return False
     
+    def add_notebook(self, notebook_data: Dict[str, Any]) -> bool:
+        """
+        Add a notebook to the current session.
+
+        Args:
+            notebook_data (Dict[str, Any]): Notebook metadata (id, url, title, etc.)
+
+        Returns:
+            bool: True if add successful, False otherwise
+        """
+        try:
+            if not self.current_session:
+                self.logger.warning("No active session to add notebook to")
+                return False
+
+            # Ensure notebooks list exists
+            if 'notebooks' not in self.current_session:
+                self.current_session['notebooks'] = []
+
+            # Add timestamp if not present
+            if 'created_at' not in notebook_data:
+                notebook_data['created_at'] = datetime.now().isoformat()
+
+            # Add notebook to session
+            self.current_session['notebooks'].append(notebook_data)
+
+            # Set as active notebook if it's the first or marked active
+            if not self.current_session.get('active_notebook_id') or notebook_data.get('active', False):
+                self.current_session['active_notebook_id'] = notebook_data.get('id')
+
+            # Auto-save if enabled
+            if self.auto_save:
+                self._save_current_session()
+
+            self.logger.info(f"✅ Notebook added to session: {notebook_data.get('id', 'Unknown')}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to add notebook to session: {e}")
+            return False
+
+    def get_active_notebook(self) -> Optional[Dict[str, Any]]:
+        """
+        Get the currently active notebook.
+
+        Returns:
+            Optional[Dict[str, Any]]: Active notebook data or None
+        """
+        try:
+            if not self.current_session:
+                return None
+
+            active_id = self.current_session.get('active_notebook_id')
+            if not active_id:
+                return None
+
+            # Find notebook by ID
+            notebooks = self.current_session.get('notebooks', [])
+            for notebook in notebooks:
+                if notebook.get('id') == active_id:
+                    return notebook
+
+            return None
+
+        except Exception as e:
+            self.logger.error(f"❌ Error getting active notebook: {e}")
+            return None
+
+    def set_active_notebook(self, notebook_id: str) -> bool:
+        """
+        Set a notebook as active.
+
+        Args:
+            notebook_id (str): ID of the notebook to set as active
+
+        Returns:
+            bool: True if set successful, False otherwise
+        """
+        try:
+            if not self.current_session:
+                self.logger.warning("No active session")
+                return False
+
+            # Verify notebook exists in session
+            notebooks = self.current_session.get('notebooks', [])
+            notebook_found = False
+
+            for notebook in notebooks:
+                if notebook.get('id') == notebook_id:
+                    notebook_found = True
+                    notebook['active'] = True
+                else:
+                    notebook['active'] = False
+
+            if not notebook_found:
+                self.logger.warning(f"Notebook {notebook_id} not found in session")
+                return False
+
+            # Set as active
+            self.current_session['active_notebook_id'] = notebook_id
+
+            # Auto-save if enabled
+            if self.auto_save:
+                self._save_current_session()
+
+            self.logger.info(f"✅ Notebook set as active: {notebook_id}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to set active notebook: {e}")
+            return False
+
+    def list_notebooks(self) -> List[Dict[str, Any]]:
+        """
+        List all notebooks in the current session.
+
+        Returns:
+            List[Dict[str, Any]]: List of notebook data
+        """
+        try:
+            if not self.current_session:
+                return []
+
+            return self.current_session.get('notebooks', [])
+
+        except Exception as e:
+            self.logger.error(f"❌ Error listing notebooks: {e}")
+            return []
+
+    def get_notebook_by_id(self, notebook_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific notebook by ID.
+
+        Args:
+            notebook_id (str): ID of the notebook to retrieve
+
+        Returns:
+            Optional[Dict[str, Any]]: Notebook data or None if not found
+        """
+        try:
+            notebooks = self.list_notebooks()
+            for notebook in notebooks:
+                if notebook.get('id') == notebook_id:
+                    return notebook
+
+            return None
+
+        except Exception as e:
+            self.logger.error(f"❌ Error getting notebook: {e}")
+            return None
+
+    def update_notebook(self, notebook_id: str, updates: Dict[str, Any]) -> bool:
+        """
+        Update notebook metadata.
+
+        Args:
+            notebook_id (str): ID of the notebook to update
+            updates (Dict[str, Any]): Fields to update
+
+        Returns:
+            bool: True if update successful, False otherwise
+        """
+        try:
+            if not self.current_session:
+                self.logger.warning("No active session")
+                return False
+
+            notebooks = self.current_session.get('notebooks', [])
+            notebook_found = False
+
+            for notebook in notebooks:
+                if notebook.get('id') == notebook_id:
+                    notebook.update(updates)
+                    notebook['updated_at'] = datetime.now().isoformat()
+                    notebook_found = True
+                    break
+
+            if not notebook_found:
+                self.logger.warning(f"Notebook {notebook_id} not found")
+                return False
+
+            # Auto-save if enabled
+            if self.auto_save:
+                self._save_current_session()
+
+            self.logger.info(f"✅ Notebook updated: {notebook_id}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to update notebook: {e}")
+            return False
+
     def get_session_status(self) -> Optional[Dict[str, Any]]:
         """
         Get the current session status.
-        
+
         Returns:
             Optional[Dict[str, Any]]: Session status or None if no active session
         """
         if not self.current_session:
             return None
-        
+
         return {
             'session_id': self.current_session['session_id'],
             'ai_assistant': self.current_session['ai_assistant'],
@@ -264,6 +458,8 @@ class SessionTracker:
             'status': self.current_session['status'],
             'podcasts_count': len(self.current_session['podcasts_created']),
             'documents_count': len(self.current_session['documents_processed']),
+            'notebooks_count': len(self.current_session.get('notebooks', [])),
+            'active_notebook_id': self.current_session.get('active_notebook_id'),
             'notes_count': len(self.current_session['notes'])
         }
     
