@@ -190,18 +190,17 @@ def test(config: str):
                         console.print("⚠️ User may need to sign in to Google account", style="yellow")
                     
                     console.print("🎉 All tests passed! DeepDiver is ready to use.", style="green")
+                    console.print("🔗 Browser kept open for next command", style="dim")
                 else:
                     console.print("❌ NotebookLM navigation failed", style="red")
             else:
                 console.print("❌ Browser connection failed", style="red")
                 console.print("Make sure Chrome is running with CDP enabled", style="yellow")
-        
+
         except Exception as e:
             console.print(f"❌ Test failed: {e}", style="red")
-        
-        finally:
-            await automator.close()
-    
+        # Browser stays open - no close() call
+
     asyncio.run(run_test())
 
 
@@ -311,11 +310,57 @@ def write(message: str, config: str):
               help='Path to configuration file')
 def status(config: str):
     """Show current session status."""
-    console.print("📊 Session Status", style="blue")
-    
-    # TODO: Implement session status
-    console.print("⚠️ Session status not yet implemented", style="yellow")
-    console.print("This feature will be available in a future release", style="yellow")
+    from .session_tracker import SessionTracker
+
+    tracker = SessionTracker()
+    tracker._load_current_session()
+
+    if not tracker.current_session:
+        console.print("❌ No active session", style="red")
+        console.print("💡 Run 'deepdiver notebook create' to start a session", style="yellow")
+        return
+
+    session_status = tracker.get_session_status()
+
+    console.print("📊 Session Status", style="bold blue")
+    console.print()
+    console.print(f"🔮 Session ID: {session_status['session_id'][:16]}...", style="cyan")
+    console.print(f"🤖 AI Assistant: {session_status['ai_assistant']}", style="cyan")
+    console.print(f"📓 Notebooks: {session_status['notebooks_count']}", style="cyan")
+    if session_status['active_notebook_id']:
+        console.print(f"🟢 Active Notebook: {session_status['active_notebook_id']}", style="green")
+    console.print(f"📝 Notes: {session_status['notes_count']}", style="dim")
+    console.print(f"📅 Created: {session_status['created_at']}", style="dim")
+
+
+@session.command(name='close')
+@click.option('--config', '-c', default='deepdiver/deepdiver.yaml',
+              help='Path to configuration file')
+def close_session(config: str):
+    """Close browser and cleanup session resources."""
+    console.print("🔒 Closing browser session...", style="blue")
+
+    async def run_close():
+        from .notebooklm_automator import NotebookLMAutomator
+
+        automator = NotebookLMAutomator(config)
+
+        try:
+            # Connect to browser (if it's still running)
+            if await automator.connect_to_browser():
+                console.print("✅ Connected to browser", style="green")
+                # Close the browser
+                await automator.close()
+                console.print("✅ Browser closed successfully", style="green")
+            else:
+                console.print("⚠️  Browser not running", style="yellow")
+        except Exception as e:
+            console.print(f"⚠️  Error closing browser: {e}", style="yellow")
+            console.print("Browser may have already been closed", style="dim")
+
+    asyncio.run(run_close())
+    console.print("💡 Session data preserved in ./sessions/", style="cyan")
+    console.print("💡 Run 'deepdiver notebook create' to start a new session", style="cyan")
 
 
 @cli.command()
@@ -404,12 +449,12 @@ def notebook_create(config: str):
                         # Add to session
                         tracker.add_notebook(notebook_data)
                         console.print(f"💾 Notebook saved to session", style="green")
+                        console.print(f"🔗 Browser kept open for next command", style="dim")
                     else:
                         console.print("❌ Failed to create notebook", style="red")
         except Exception as e:
             console.print(f"❌ Failed to create notebook: {e}", style="red")
-        finally:
-            await automator.close()
+        # Browser stays open - no close() call
 
     asyncio.run(run_create_notebook())
 
@@ -525,8 +570,7 @@ def notebook_share(email: str, notebook_id: Optional[str], role: str, config: st
                     console.print("❌ Failed to navigate to notebook", style="red")
         except Exception as e:
             console.print(f"❌ Failed to share notebook: {e}", style="red")
-        finally:
-            await automator.close()
+        # Browser stays open - no close() call
 
     asyncio.run(run_share_notebook())
 
@@ -591,12 +635,12 @@ def notebook_open(notebook_id: str, config: str):
                     if tracker.current_session:
                         tracker.set_active_notebook(notebook_id)
                         console.print("💾 Set as active notebook in session", style="cyan")
+                    console.print("🔗 Browser kept open for next command", style="dim")
                 else:
                     console.print("❌ Failed to navigate to notebook", style="red")
         except Exception as e:
             console.print(f"❌ Failed to open notebook: {e}", style="red")
-        finally:
-            await automator.close()
+        # Browser stays open - no close() call
 
     asyncio.run(run_open_notebook())
 
