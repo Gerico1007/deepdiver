@@ -53,7 +53,7 @@ Thumbs.db
 
 # DeepDiver specific
 output/
-sessions/
+/sessions/
 credentials/
 temp/
 logs/
