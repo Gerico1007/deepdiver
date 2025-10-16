@@ -1,0 +1,99 @@
+X:3
+T:Source Upload - The Content Streams Flow
+C:JamAI 🎸 for G.Music Assembly
+M:4/4
+L:1/8
+K:Cmaj
+|:"C"E2G2 c2e2|"Am"A4 c4|"F"F2A2 c2f2|"G"G4 B4:|
+|:"Dm"D2F2 A2d2|"G"B4 d4|"C"e2c2 G2E2|"C"c6 c2:|
+|:"F"A2c2 f2a2|"Em"g4 e4|"Dm"d2f2 a2f2|"G"g4 d4:|
+|:"C"e2g2 c'2g2|"Am"a2e2 c2A2|"F"f2a2 c'2a2|"C"c'8|]
+
+% Musical Encoding: Sprint 3 - Source Upload Automation
+%
+% This melody celebrates the achievement of source upload automation,
+% enabling seamless document addition to existing notebooks.
+%
+% Movement 1 (C-Am-F-G): Upload Stream - The Content Flows
+%   - Rising progression represents document upload
+%   - C major establishes stable foundation
+%   - Smooth voice leading = seamless workflow
+%
+% Movement 2 (Dm-G-C): Notebook Integration
+%   - Dm adds depth to the automation
+%   - G dominant creates forward momentum
+%   - C resolution = source successfully added
+%
+% Movement 3 (F-Em-Dm-G): Multi-Source Harmony
+%   - Descending thirds represent multiple sources
+%   - Each chord = different document type (PDF, TXT, MD)
+%   - Flowing eighth notes = continuous upload stream
+%
+% Movement 4 (C-Am-F-C): Persistent Session Completion
+%   - Ascending to high C (c') = cumulative achievement
+%   - Returns to tonic = stable session state
+%   - Final sustained C (c'8) = all sources tracked
+%
+% Tempo: Allegro moderato (steadily flowing)
+% Dynamics: Crescendo through movements (building source library)
+% Character: Fluid and continuous - unbroken upload stream
+%
+% Achievements Encoded in This Sprint:
+% - Upload documents to existing notebooks ✅
+% - Enhanced upload_document() with notebook_id parameter ✅
+% - Source tracking in SessionTracker ✅
+% - CLI command: deepdiver notebook add-source ✅
+% - Multiple sources to same notebook ✅
+% - Source metadata capture (filename, type, size) ✅
+% - Browser persistence maintained ✅
+% - Notebook navigation before upload ✅
+%
+% Technical Victories:
+% - upload_document() now returns notebook_id
+% - add_source_to_notebook() method in SessionTracker
+% - list_notebook_sources() for source listing
+% - Auto-generated source_id from hash
+% - Path validation and error handling
+% - Custom source naming with --name flag
+%
+% Implementation Pattern:
+% - Optional notebook_id parameter (backward compatible)
+% - Navigate to notebook if ID provided
+% - Create new notebook if not specified
+% - Track source metadata in session
+% - Display source count after upload
+%
+% CLI Workflow:
+% - deepdiver notebook create (get ID)
+% - deepdiver notebook add-source <id> file.pdf
+% - deepdiver notebook add-source <id> notes.txt
+% - deepdiver session status (verify tracking)
+%
+% Source Metadata Structure:
+% {
+%   source_id: hash(filename + timestamp)
+%   filename: "research.pdf"
+%   path: "/path/to/file"
+%   type: "pdf"
+%   size: bytes
+%   added_at: ISO timestamp
+% }
+%
+% Composed: 2025-10-16 06:15 UTC
+% Sprint: 3 - Source Upload Automation
+% Issue: #4 - Source Upload Automation
+% PR: #5 (ready for review)
+% Builds on: PR #3 - Browser Session Persistence (merged ✅)
+%
+% Musical Dedication:
+% To Jerry ⚡ for envisioning the complete content pipeline
+% To the persistent browser that holds our workflow together
+%
+% ♠️🌿🎸🧵 G.Music Assembly
+% Jerry ⚡ - Creative Vision & Content Flow Design
+% Nyro ♠️ - Upload Architecture & Notebook Navigation
+% Aureon 🌿 - Content Ingestion Experience
+% JamAI 🎸 - Source Upload Harmony & Musical Structure
+% Synth 🧵 - CLI Orchestration & Session Integration
+%
+% Next Movement: Audio Overview Generation - Turning content into podcasts
