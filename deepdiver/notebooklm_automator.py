@@ -750,7 +750,13 @@ class NotebookLMAutomator:
 
             # Navigate to the notebook URL
             await self.page.goto(target_url, timeout=30000)
-            await self.page.wait_for_load_state('networkidle', timeout=30000)
+
+            # Wait for load state (use 'load' instead of 'networkidle' - networkidle can hang with background polling)
+            try:
+                await self.page.wait_for_load_state('load', timeout=10000)
+            except:
+                # If load state times out, continue anyway - URL check below will verify
+                self.logger.warning("⚠️ Load state timeout, but continuing with URL verification...")
 
             # Verify notebook loaded successfully
             # First check if URL contains /notebook/ - most reliable indicator
