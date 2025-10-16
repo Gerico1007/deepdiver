@@ -469,17 +469,38 @@ class NotebookLMAutomator:
             self.logger.info(f"Upload element tag name: {upload_element_tag_name}")
 
             # Handle file input
-            if upload_element_tag_name == 'INPUT' and upload_element.get_attribute('type') == 'file':
+            if upload_element_tag_name == 'INPUT':
+                # Direct file input element
                 await upload_element.set_input_files(file_path)
             else:
-                # Click upload button and handle file dialog
+                # Click upload button to activate file dialog
                 await upload_element.click()
                 await self.page.wait_for_timeout(1000)
-                
-                # Handle file dialog (this might need adjustment based on actual interface)
-                file_input = await self.page.wait_for_selector('input[type="file"]', timeout=5000)
+
+                # Find hidden file input (NotebookLM uses hidden input with aria-hidden="true")
+                # Don't wait for visibility - set files directly on hidden input
+                file_input_selectors = [
+                    'input[type="file"][name="Filedata"]',  # NotebookLM specific
+                    'input[type="file"]',                   # Generic fallback
+                ]
+
+                file_input = None
+                for selector in file_input_selectors:
+                    try:
+                        # Use query_selector to get element even if hidden
+                        file_input = await self.page.query_selector(selector)
+                        if file_input:
+                            self.logger.info(f"✅ Found file input: {selector}")
+                            break
+                    except:
+                        continue
+
                 if file_input:
+                    # Set files on hidden input directly
                     await file_input.set_input_files(file_path)
+                else:
+                    self.logger.error("❌ Could not find file input element")
+                    return None
             
             # Wait for upload to complete
             await self.page.wait_for_timeout(5000)
