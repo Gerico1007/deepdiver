@@ -39,6 +39,8 @@ venv.bak/
 *.swp
 *.swo
 *~
+.cursor/
+.gemini/
 
 # OS
 .DS_Store
@@ -56,6 +58,7 @@ credentials/
 temp/
 logs/
 *.log
+upload_element_not_found.png
 
 # Audio files
 *.mp3
@@ -69,15 +72,6 @@ chrome-deepdiver/
 chrome-user-data/
 *.crx
 *.pem
-
-# Configuration (keep template)
-!deepdiver/deepdiver.yaml
-deepdiver.yaml
-
-# Test files
-test_*.py
-*_test.py
-tests/
 
 # Documentation build
 docs/_build/
