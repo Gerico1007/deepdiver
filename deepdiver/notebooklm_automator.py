@@ -753,9 +753,18 @@ class NotebookLMAutomator:
             await self.page.wait_for_load_state('networkidle', timeout=30000)
 
             # Verify notebook loaded successfully
+            # First check if URL contains /notebook/ - most reliable indicator
+            current_url = self.page.url
+            if '/notebook/' in current_url:
+                self.logger.info(f"✅ Notebook URL verified: {current_url}")
+                self.logger.info(f"✅ Successfully navigated to notebook")
+                return True
+
             # Multi-selector strategy for notebook verification
             notebook_indicators = [
                 'mat-card.create-new-action-button',  # Sources panel
+                'h2:has-text("Add sources")',          # Add sources dialog header
+                'div[role="dialog"]',                  # Any dialog (add sources)
                 'button:has-text("Audio Overview")',  # Audio Overview button
                 '[data-testid="notebook-content"]',   # Notebook content area
                 '.notebook-title',                     # Notebook title
