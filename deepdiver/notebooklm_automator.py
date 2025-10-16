@@ -180,12 +180,14 @@ class NotebookLMAutomator:
             config_path: Path to configuration file
             cdp_url_override: Optional CDP URL override (highest priority)
         """
+        # Set up logger FIRST so other methods can use it
+        self.logger = self._setup_logging()
+
         self.config_path = config_path
         self.config = self._load_config(config_path)
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
-        self.logger = self._setup_logging()
 
         # NotebookLM specific settings
         self.base_url = self.config.get('NOTEBOOKLM_SETTINGS', {}).get('base_url', 'https://notebooklm.google.com')
