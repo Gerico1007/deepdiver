@@ -644,6 +644,88 @@ def notebook_open(notebook_id: str, config: str):
 
     asyncio.run(run_open_notebook())
 
+
+@notebook.command(name='add-source')
+@click.argument('notebook_id')
+@click.argument('source', type=click.Path(exists=True))
+@click.option('--name', '-n', help='Custom name for the source')
+@click.option('--config', '-c', default='deepdiver/deepdiver.yaml',
+              help='Path to configuration file')
+def notebook_add_source(notebook_id: str, source: str, name: Optional[str], config: str):
+    """Add a source document to an existing notebook."""
+    console.print(f"📄 Adding source to notebook: {notebook_id}", style="blue")
+    console.print(f"📎 Source file: {source}", style="cyan")
+
+    if name:
+        console.print(f"🏷️  Custom name: {name}", style="cyan")
+
+    async def run_add_source():
+        from .notebooklm_automator import NotebookLMAutomator
+        from .session_tracker import SessionTracker
+
+        automator = NotebookLMAutomator(config)
+        tracker = SessionTracker()
+        tracker._load_current_session()
+
+        try:
+            # Verify notebook exists in session
+            notebook = None
+            if tracker.current_session:
+                notebook = tracker.get_notebook_by_id(notebook_id)
+                if not notebook:
+                    console.print(f"⚠️  Notebook {notebook_id} not found in session", style="yellow")
+                    console.print("💡 The notebook will still be added to if it exists in NotebookLM", style="dim")
+
+            # Connect to browser
+            if not await automator.connect_to_browser():
+                console.print("❌ Failed to connect to browser", style="red")
+                console.print("💡 Make sure Chrome is running with: deepdiver init", style="yellow")
+                return
+
+            # Upload document to the specified notebook
+            console.print(f"📤 Uploading document to notebook...", style="blue")
+            result_notebook_id = await automator.upload_document(source, notebook_id=notebook_id)
+
+            if result_notebook_id:
+                console.print("✅ Source added successfully!", style="green")
+                console.print(f"📋 Notebook ID: {result_notebook_id}", style="cyan")
+
+                # Track source in session
+                if tracker.current_session:
+                    from pathlib import Path
+                    source_path = Path(source)
+
+                    source_data = {
+                        'filename': name or source_path.name,
+                        'path': source,
+                        'type': source_path.suffix[1:] if source_path.suffix else 'unknown',
+                        'size': source_path.stat().st_size
+                    }
+
+                    # Add source to notebook in session
+                    if tracker.add_source_to_notebook(result_notebook_id, source_data):
+                        console.print(f"💾 Source tracked in session", style="green")
+
+                        # Display updated source count
+                        sources = tracker.list_notebook_sources(result_notebook_id)
+                        console.print(f"📚 Total sources in notebook: {len(sources)}", style="cyan")
+                    else:
+                        console.print("⚠️  Could not track source in session", style="yellow")
+
+                console.print(f"🔗 Browser kept open for next command", style="dim")
+            else:
+                console.print("❌ Failed to add source to notebook", style="red")
+                console.print("💡 Make sure the notebook ID is correct and you have permission to edit", style="yellow")
+
+        except Exception as e:
+            console.print(f"❌ Failed to add source: {e}", style="red")
+            import traceback
+            console.print(traceback.format_exc(), style="dim")
+        # Browser stays open - no close() call
+
+    asyncio.run(run_add_source())
+
+
 def main():
     """Main entry point for DeepDiver CLI."""
     try:
