@@ -367,47 +367,73 @@ class NotebookLMAutomator:
                 self.logger.info(f"📸 Screenshot saved to {screenshot_path}")
             return False
     
-    async def upload_document(self, file_path: str) -> bool:
+    async def upload_document(self, file_path: str, notebook_id: str = None) -> Optional[str]:
         """
         Upload a document to NotebookLM.
-        
+
         Args:
             file_path (str): Path to the document to upload
-            
+            notebook_id (str): Optional. If provided, add source to this existing notebook.
+                               If None, create a new notebook (legacy behavior).
+
         Returns:
-            bool: True if upload successful, False otherwise
+            Optional[str]: Notebook ID where document was uploaded, or None if upload failed
         """
         try:
             if not self.page:
                 self.logger.error("❌ No browser page available")
-                return False
-            
+                return None
+
             if not os.path.exists(file_path):
                 self.logger.error(f"❌ File not found: {file_path}")
-                return False
-            
+                return None
+
             self.logger.info(f"📄 Uploading document: {file_path}")
 
-            # Check if we are on the main page by looking for "Recent notebooks"
-            try:
-                recent_notebooks_header = await self.page.is_visible('h2:has-text("Recent notebooks")')
-            except:
-                recent_notebooks_header = False
+            current_notebook_id = notebook_id
 
-            if recent_notebooks_header:
+            # If notebook_id provided, navigate to that notebook
+            if notebook_id:
+                self.logger.info(f"📓 Navigating to existing notebook: {notebook_id}")
+                if not await self.navigate_to_notebook(notebook_id=notebook_id):
+                    self.logger.error(f"❌ Failed to navigate to notebook {notebook_id}")
+                    return None
+            else:
+                # Check if we are on the main page by looking for "Recent notebooks"
                 try:
-                    self.logger.info("📓 On main page, creating a new notebook...")
-                    await self.page.locator('button[aria-label="Create new notebook"]').first.click()
-                    await self.page.wait_for_load_state('networkidle')
-                    # Wait for the notebook to be created and ready for sources
-                    await self.page.wait_for_selector('mat-card.create-new-action-button', timeout=15000)
-                    self.logger.info("✅ New notebook created.")
-                except Exception as e:
-                    self.logger.error(f"❌ Failed to create a new notebook: {e}")
-                    if self.page:
-                        await self.page.screenshot(path="create_notebook_failed.png")
-                        self.logger.info("📸 Screenshot saved to create_notebook_failed.png")
-                    return False
+                    recent_notebooks_header = await self.page.is_visible('h2:has-text("Recent notebooks")')
+                except:
+                    recent_notebooks_header = False
+
+                if recent_notebooks_header:
+                    try:
+                        self.logger.info("📓 On main page, creating a new notebook...")
+
+                        # Use create_notebook() to capture notebook ID
+                        notebook_data = await self.create_notebook()
+                        if not notebook_data:
+                            self.logger.error("❌ Failed to create new notebook")
+                            return None
+
+                        current_notebook_id = notebook_data['id']
+                        self.logger.info(f"✅ New notebook created with ID: {current_notebook_id}")
+
+                    except Exception as e:
+                        self.logger.error(f"❌ Failed to create a new notebook: {e}")
+                        if self.page:
+                            await self.page.screenshot(path="create_notebook_failed.png")
+                            self.logger.info("📸 Screenshot saved to create_notebook_failed.png")
+                        return None
+                else:
+                    # Already in a notebook, try to extract ID from URL
+                    current_url = self.page.url
+                    if '/notebook/' in current_url:
+                        parts = current_url.split('/notebook/')
+                        if len(parts) > 1:
+                            current_notebook_id = parts[1].split('?')[0].split('#')[0].split('/')[0]
+                            self.logger.info(f"📓 Already in notebook: {current_notebook_id}")
+                    else:
+                        self.logger.warning("⚠️ Not on main page and not in a notebook, URL: {current_url}")
 
             # Now we should be inside a notebook, look for the upload button.
             # This might be the same as the "Add source" button.
@@ -457,13 +483,14 @@ class NotebookLMAutomator:
             
             # Wait for upload to complete
             await self.page.wait_for_timeout(5000)
-            
+
             self.logger.info("✅ Document upload completed")
-            return True
-            
+            self.logger.info(f"📋 Uploaded to notebook: {current_notebook_id}")
+            return current_notebook_id
+
         except Exception as e:
             self.logger.error(f"❌ Failed to upload document: {e}")
-            return False
+            return None
     
     async def generate_audio_overview(self, title: str = "Generated Podcast") -> bool:
         """
