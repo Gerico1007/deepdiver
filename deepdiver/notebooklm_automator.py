@@ -462,9 +462,11 @@ class NotebookLMAutomator:
             # Check if notebook already has sources - if so, click "+ Add" button first
             # ♠️ Jerry: When sources exist, need to click Add button to show upload options
             add_button_selectors = [
-                'button:has-text("Add")',
-                'button:has-text("+ Add")',
-                'button[aria-label*="Add"]',
+                'button.add-source-button',                          # Specific class
+                'button[aria-label="Add source"]',                   # Exact aria-label
+                'button[mattooltip="Add source"]',                   # Mat tooltip
+                'button[mat-stroked-button]:has-text("Add")',        # Mat stroked button with Add text
+                'button:has-text("Add")',                            # Fallback
             ]
 
             for selector in add_button_selectors:
