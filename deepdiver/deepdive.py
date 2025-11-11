@@ -680,14 +680,31 @@ def notebook_open(notebook_id: str, config: str):
 
 @notebook.command(name='add-source')
 @click.argument('notebook_id')
-@click.argument('source', type=click.Path(exists=True))
+@click.argument('source')
 @click.option('--name', '-n', help='Custom name for the source')
 @click.option('--config', '-c', default='deepdiver/deepdiver.yaml',
               help='Path to configuration file')
 def notebook_add_source(notebook_id: str, source: str, name: Optional[str], config: str):
-    """Add a source document to an existing notebook."""
+    """Add a source to an existing notebook.
+
+    SOURCE can be:
+    - SimExp URL: https://app.simplenote.com/p/[NOTE_ID]
+    - Web URL: https://example.com/article
+    - YouTube URL: https://youtube.com/watch?v=...
+    - Local file: ./document.pdf
+
+    Examples:
+        deepdiver notebook add-source abc-123 "https://app.simplenote.com/p/xyz"
+        deepdiver notebook add-source abc-123 "https://youtube.com/watch?v=xyz"
+        deepdiver notebook add-source abc-123 ./research.pdf
+    """
     console.print(f"📄 Adding source to notebook: {notebook_id}", style="blue")
-    console.print(f"📎 Source file: {source}", style="cyan")
+
+    # Detect source type for better messaging
+    if source.startswith(('http://', 'https://')):
+        console.print(f"🔗 Source URL: {source}", style="cyan")
+    else:
+        console.print(f"📎 Source file: {source}", style="cyan")
 
     if name:
         console.print(f"🏷️  Custom name: {name}", style="cyan")
@@ -715,9 +732,9 @@ def notebook_add_source(notebook_id: str, source: str, name: Optional[str], conf
                 console.print("💡 Make sure Chrome is running with: deepdiver init", style="yellow")
                 return
 
-            # Upload document to the specified notebook
-            console.print(f"📤 Uploading document to notebook...", style="blue")
-            result_notebook_id = await automator.upload_document(source, notebook_id=notebook_id)
+            # Add source to the specified notebook (handles both URLs and files)
+            console.print(f"📤 Adding source to notebook...", style="blue")
+            result_notebook_id = await automator.add_source(source, notebook_id=notebook_id)
 
             if result_notebook_id:
                 console.print("✅ Source added successfully!", style="green")
@@ -725,15 +742,25 @@ def notebook_add_source(notebook_id: str, source: str, name: Optional[str], conf
 
                 # Track source in session
                 if tracker.current_session:
-                    from pathlib import Path
-                    source_path = Path(source)
-
-                    source_data = {
-                        'filename': name or source_path.name,
-                        'path': source,
-                        'type': source_path.suffix[1:] if source_path.suffix else 'unknown',
-                        'size': source_path.stat().st_size
-                    }
+                    # Determine source type and create metadata
+                    if source.startswith(('http://', 'https://')):
+                        # URL source
+                        source_data = {
+                            'filename': name or source,
+                            'path': source,
+                            'type': 'url',
+                            'size': 0  # Unknown for URLs
+                        }
+                    else:
+                        # File source
+                        from pathlib import Path
+                        source_path = Path(source)
+                        source_data = {
+                            'filename': name or source_path.name,
+                            'path': source,
+                            'type': source_path.suffix[1:] if source_path.suffix else 'unknown',
+                            'size': source_path.stat().st_size if source_path.exists() else 0
+                        }
 
                     # Add source to notebook in session
                     if tracker.add_source_to_notebook(result_notebook_id, source_data):
