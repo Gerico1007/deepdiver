@@ -1,0 +1,19 @@
+CLI Test Document
+==================
+
+This document is for testing the CLI `notebook add-source` command.
+
+## Purpose
+
+Testing that the complete CLI workflow works:
+1. Create a notebook via CLI
+2. Add sources via CLI
+3. Track sources in session
+
+## Content
+
+This is a simple text document that NotebookLM can process.
+The CLI should be able to upload this successfully.
+
+---
+Generated for Issue #4 CLI testing

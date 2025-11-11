@@ -416,11 +416,28 @@ def notebook():
 
 
 @notebook.command(name='create')
+@click.option('--source', '-s', help='Add a source to the notebook (URL or file path)')
 @click.option('--config', '-c', default='deepdiver/deepdiver.yaml',
               help='Path to configuration file')
-def notebook_create(config: str):
-    """Create a new notebook in NotebookLM."""
-    console.print("📓 Creating a new NotebookLM notebook...", style="blue")
+def notebook_create(source: str, config: str):
+    """Create a new notebook in NotebookLM with optional initial source.
+
+    The source can be:
+    - SimExp session URL: https://app.simplenote.com/p/[NOTE_ID]
+    - Web article URL: https://example.com/article
+    - YouTube URL: https://youtube.com/watch?v=...
+    - Local file path: ./document.pdf
+
+    Examples:
+        deepdiver notebook create --source "https://app.simplenote.com/p/abc123"
+        deepdiver notebook create --source "https://example.com/research"
+        deepdiver notebook create --source "./notes.pdf"
+        deepdiver notebook create  # Create empty notebook
+    """
+    if source:
+        console.print(f"📓 Creating notebook with source: {source}", style="blue")
+    else:
+        console.print("📓 Creating a new NotebookLM notebook...", style="blue")
 
     async def run_create_notebook():
         from .notebooklm_automator import NotebookLMAutomator
@@ -449,7 +466,23 @@ def notebook_create(config: str):
                         # Add to session
                         tracker.add_notebook(notebook_data)
                         console.print(f"💾 Notebook saved to session", style="green")
-                        console.print(f"🔗 Browser kept open for next command", style="dim")
+
+                        # Add source if provided
+                        if source:
+                            console.print(f"\n🔗 Adding source to notebook...", style="blue")
+                            result = await automator.add_source(source, notebook_id=notebook_data['id'])
+                            if result:
+                                console.print(f"✅ Source added successfully!", style="green")
+                                # Update session tracker with source info
+                                tracker.add_source_to_notebook(notebook_data['id'], {
+                                    'source': source,
+                                    'type': 'url' if source.startswith(('http://', 'https://')) else 'file'
+                                })
+                            else:
+                                console.print(f"❌ Failed to add source", style="red")
+                                console.print(f"💡 Tip: You can add sources later with 'deepdiver notebook add-source'", style="yellow")
+
+                        console.print(f"\n🔗 Browser kept open for next command", style="dim")
                     else:
                         console.print("❌ Failed to create notebook", style="red")
         except Exception as e:
@@ -643,6 +676,115 @@ def notebook_open(notebook_id: str, config: str):
         # Browser stays open - no close() call
 
     asyncio.run(run_open_notebook())
+
+
+@notebook.command(name='add-source')
+@click.argument('notebook_id')
+@click.argument('source')
+@click.option('--name', '-n', help='Custom name for the source')
+@click.option('--config', '-c', default='deepdiver/deepdiver.yaml',
+              help='Path to configuration file')
+def notebook_add_source(notebook_id: str, source: str, name: Optional[str], config: str):
+    """Add a source to an existing notebook.
+
+    SOURCE can be:
+    - SimExp URL: https://app.simplenote.com/p/[NOTE_ID]
+    - Web URL: https://example.com/article
+    - YouTube URL: https://youtube.com/watch?v=...
+    - Local file: ./document.pdf
+
+    Examples:
+        deepdiver notebook add-source abc-123 "https://app.simplenote.com/p/xyz"
+        deepdiver notebook add-source abc-123 "https://youtube.com/watch?v=xyz"
+        deepdiver notebook add-source abc-123 ./research.pdf
+    """
+    console.print(f"📄 Adding source to notebook: {notebook_id}", style="blue")
+
+    # Detect source type for better messaging
+    if source.startswith(('http://', 'https://')):
+        console.print(f"🔗 Source URL: {source}", style="cyan")
+    else:
+        console.print(f"📎 Source file: {source}", style="cyan")
+
+    if name:
+        console.print(f"🏷️  Custom name: {name}", style="cyan")
+
+    async def run_add_source():
+        from .notebooklm_automator import NotebookLMAutomator
+        from .session_tracker import SessionTracker
+
+        automator = NotebookLMAutomator(config)
+        tracker = SessionTracker()
+        tracker._load_current_session()
+
+        try:
+            # Verify notebook exists in session
+            notebook = None
+            if tracker.current_session:
+                notebook = tracker.get_notebook_by_id(notebook_id)
+                if not notebook:
+                    console.print(f"⚠️  Notebook {notebook_id} not found in session", style="yellow")
+                    console.print("💡 The notebook will still be added to if it exists in NotebookLM", style="dim")
+
+            # Connect to browser
+            if not await automator.connect_to_browser():
+                console.print("❌ Failed to connect to browser", style="red")
+                console.print("💡 Make sure Chrome is running with: deepdiver init", style="yellow")
+                return
+
+            # Add source to the specified notebook (handles both URLs and files)
+            console.print(f"📤 Adding source to notebook...", style="blue")
+            result_notebook_id = await automator.add_source(source, notebook_id=notebook_id)
+
+            if result_notebook_id:
+                console.print("✅ Source added successfully!", style="green")
+                console.print(f"📋 Notebook ID: {result_notebook_id}", style="cyan")
+
+                # Track source in session
+                if tracker.current_session:
+                    # Determine source type and create metadata
+                    if source.startswith(('http://', 'https://')):
+                        # URL source
+                        source_data = {
+                            'filename': name or source,
+                            'path': source,
+                            'type': 'url',
+                            'size': 0  # Unknown for URLs
+                        }
+                    else:
+                        # File source
+                        from pathlib import Path
+                        source_path = Path(source)
+                        source_data = {
+                            'filename': name or source_path.name,
+                            'path': source,
+                            'type': source_path.suffix[1:] if source_path.suffix else 'unknown',
+                            'size': source_path.stat().st_size if source_path.exists() else 0
+                        }
+
+                    # Add source to notebook in session
+                    if tracker.add_source_to_notebook(result_notebook_id, source_data):
+                        console.print(f"💾 Source tracked in session", style="green")
+
+                        # Display updated source count
+                        sources = tracker.list_notebook_sources(result_notebook_id)
+                        console.print(f"📚 Total sources in notebook: {len(sources)}", style="cyan")
+                    else:
+                        console.print("⚠️  Could not track source in session", style="yellow")
+
+                console.print(f"🔗 Browser kept open for next command", style="dim")
+            else:
+                console.print("❌ Failed to add source to notebook", style="red")
+                console.print("💡 Make sure the notebook ID is correct and you have permission to edit", style="yellow")
+
+        except Exception as e:
+            console.print(f"❌ Failed to add source: {e}", style="red")
+            import traceback
+            console.print(traceback.format_exc(), style="dim")
+        # Browser stays open - no close() call
+
+    asyncio.run(run_add_source())
+
 
 def main():
     """Main entry point for DeepDiver CLI."""

@@ -439,6 +439,77 @@ class SessionTracker:
             self.logger.error(f"❌ Failed to update notebook: {e}")
             return False
 
+    def add_source_to_notebook(self, notebook_id: str, source_data: Dict[str, Any]) -> bool:
+        """
+        Add a source to a notebook in the session.
+
+        Args:
+            notebook_id (str): ID of the notebook to add source to
+            source_data (Dict[str, Any]): Source metadata (filename, path, type, etc.)
+
+        Returns:
+            bool: True if add successful, False otherwise
+        """
+        try:
+            if not self.current_session:
+                self.logger.warning("No active session")
+                return False
+
+            # Find the notebook
+            notebook = self.get_notebook_by_id(notebook_id)
+            if not notebook:
+                self.logger.warning(f"Notebook {notebook_id} not found")
+                return False
+
+            # Ensure sources list exists
+            if 'sources' not in notebook:
+                notebook['sources'] = []
+
+            # Add timestamp and ID if not present
+            if 'added_at' not in source_data:
+                source_data['added_at'] = datetime.now().isoformat()
+            if 'source_id' not in source_data:
+                # Generate simple source ID from filename and timestamp
+                import hashlib
+                filename = source_data.get('filename', 'unknown')
+                timestamp = datetime.now().isoformat()
+                source_id = hashlib.md5(f"{filename}{timestamp}".encode()).hexdigest()[:8]
+                source_data['source_id'] = source_id
+
+            # Add source to notebook
+            notebook['sources'].append(source_data)
+
+            # Update notebook in session
+            self.update_notebook(notebook_id, {'sources': notebook['sources']})
+
+            self.logger.info(f"✅ Source added to notebook {notebook_id}: {source_data.get('filename', 'Unknown')}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to add source to notebook: {e}")
+            return False
+
+    def list_notebook_sources(self, notebook_id: str) -> List[Dict[str, Any]]:
+        """
+        List all sources for a notebook.
+
+        Args:
+            notebook_id (str): ID of the notebook
+
+        Returns:
+            List[Dict[str, Any]]: List of source data
+        """
+        try:
+            notebook = self.get_notebook_by_id(notebook_id)
+            if not notebook:
+                return []
+
+            return notebook.get('sources', [])
+
+        except Exception as e:
+            self.logger.error(f"❌ Error listing notebook sources: {e}")
+            return []
+
     def get_session_status(self) -> Optional[Dict[str, Any]]:
         """
         Get the current session status.

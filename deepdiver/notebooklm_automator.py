@@ -367,57 +367,131 @@ class NotebookLMAutomator:
                 self.logger.info(f"📸 Screenshot saved to {screenshot_path}")
             return False
     
-    async def upload_document(self, file_path: str) -> bool:
+    async def upload_document(self, file_path: str, notebook_id: str = None) -> Optional[str]:
         """
         Upload a document to NotebookLM.
-        
+
         Args:
             file_path (str): Path to the document to upload
-            
+            notebook_id (str): Optional. If provided, add source to this existing notebook.
+                               If None, create a new notebook (legacy behavior).
+
         Returns:
-            bool: True if upload successful, False otherwise
+            Optional[str]: Notebook ID where document was uploaded, or None if upload failed
         """
         try:
             if not self.page:
                 self.logger.error("❌ No browser page available")
-                return False
-            
+                return None
+
             if not os.path.exists(file_path):
                 self.logger.error(f"❌ File not found: {file_path}")
-                return False
-            
+                return None
+
             self.logger.info(f"📄 Uploading document: {file_path}")
 
-            # Check if we are on the main page by looking for "Recent notebooks"
-            try:
-                recent_notebooks_header = await self.page.is_visible('h2:has-text("Recent notebooks")')
-            except:
-                recent_notebooks_header = False
+            current_notebook_id = notebook_id
 
-            if recent_notebooks_header:
+            # If notebook_id provided, navigate to that notebook
+            if notebook_id:
+                self.logger.info(f"📓 Navigating to existing notebook: {notebook_id}")
+                if not await self.navigate_to_notebook(notebook_id=notebook_id):
+                    self.logger.error(f"❌ Failed to navigate to notebook {notebook_id}")
+                    return None
+            else:
+                # Check if we are on the main page by looking for "Recent notebooks"
                 try:
-                    self.logger.info("📓 On main page, creating a new notebook...")
-                    await self.page.locator('button[aria-label="Create new notebook"]').first.click()
-                    await self.page.wait_for_load_state('networkidle')
-                    # Wait for the notebook to be created and ready for sources
-                    await self.page.wait_for_selector('mat-card.create-new-action-button', timeout=15000)
-                    self.logger.info("✅ New notebook created.")
-                except Exception as e:
-                    self.logger.error(f"❌ Failed to create a new notebook: {e}")
-                    if self.page:
-                        await self.page.screenshot(path="create_notebook_failed.png")
-                        self.logger.info("📸 Screenshot saved to create_notebook_failed.png")
-                    return False
+                    recent_notebooks_header = await self.page.is_visible('h2:has-text("Recent notebooks")')
+                except:
+                    recent_notebooks_header = False
 
-            # Now we should be inside a notebook, look for the upload button.
-            # This might be the same as the "Add source" button.
+                if recent_notebooks_header:
+                    try:
+                        self.logger.info("📓 On main page, creating a new notebook...")
+
+                        # Use create_notebook() to capture notebook ID
+                        notebook_data = await self.create_notebook()
+                        if not notebook_data:
+                            self.logger.error("❌ Failed to create new notebook")
+                            return None
+
+                        current_notebook_id = notebook_data['id']
+                        self.logger.info(f"✅ New notebook created with ID: {current_notebook_id}")
+
+                    except Exception as e:
+                        self.logger.error(f"❌ Failed to create a new notebook: {e}")
+                        if self.page:
+                            await self.page.screenshot(path="create_notebook_failed.png")
+                            self.logger.info("📸 Screenshot saved to create_notebook_failed.png")
+                        return None
+                else:
+                    # Already in a notebook, try to extract ID from URL
+                    current_url = self.page.url
+                    if '/notebook/' in current_url:
+                        parts = current_url.split('/notebook/')
+                        if len(parts) > 1:
+                            current_notebook_id = parts[1].split('?')[0].split('#')[0].split('/')[0]
+                            self.logger.info(f"📓 Already in notebook: {current_notebook_id}")
+                    else:
+                        self.logger.warning("⚠️ Not on main page and not in a notebook, URL: {current_url}")
+
+            # ═══════════════════════════════════════════════════════════════
+            # SOURCES TAB NAVIGATION
+            # ♠️ Jerry: After first upload, NotebookLM switches to Chat tab
+            # We need to navigate back to Sources tab to find upload button
+            # ═══════════════════════════════════════════════════════════════
+
+            # Find Sources tab
+            sources_tab_selector = 'div[role="tab"]:has-text("Sources")'
+            try:
+                sources_tab = await self.page.wait_for_selector(sources_tab_selector, timeout=5000)
+                if sources_tab:
+                    # Check if already active
+                    is_active = await sources_tab.get_attribute('aria-selected')
+                    if is_active != 'true':
+                        self.logger.info("📑 Switching to Sources tab...")
+                        await sources_tab.click()
+                        await self.page.wait_for_timeout(500)  # Wait for tab switch animation
+                        self.logger.info("✅ On Sources tab")
+                    else:
+                        self.logger.info("✅ Already on Sources tab")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Could not find Sources tab: {e}")
+                # Continue anyway - might already be on Sources tab
+
+            # Check if notebook already has sources - if so, click "+ Add" button first
+            # ♠️ Jerry: When sources exist, need to click Add button to show upload options
+            add_button_selectors = [
+                'button.add-source-button',                          # Specific class
+                'button[aria-label="Add source"]',                   # Exact aria-label
+                'button[mattooltip="Add source"]',                   # Mat tooltip
+                'button[mat-stroked-button]:has-text("Add")',        # Mat stroked button with Add text
+                'button:has-text("Add")',                            # Fallback
+            ]
+
+            for selector in add_button_selectors:
+                try:
+                    add_button = await self.page.wait_for_selector(selector, timeout=2000)
+                    if add_button:
+                        is_visible = await add_button.is_visible()
+                        if is_visible:
+                            self.logger.info("➕ Clicking Add button to show source options...")
+                            await add_button.click()
+                            await self.page.wait_for_timeout(1000)
+                            break
+                except:
+                    continue
+
+            # Now we should be inside a notebook on Sources tab, look for the upload button.
+            # ♠️ Nyro: Real NotebookLM upload button selector from Jerry ⚡
             upload_selectors = [
-                'mat-card.create-new-action-button',
-                'button:has-text("Add source")',
-                'button:has-text("Upload file")',
-                'button[aria-label="Add source"]',
-                'button[data-testid="add-source-button"]',
-                'input[type="file"]',
+                'button[xapscottyuploadertrigger]',                    # Primary upload trigger
+                'button[aria-label="Upload sources from your computer"]', # Upload button aria label
+                'mat-card.create-new-action-button',                   # Legacy selector
+                'button:has-text("Upload sources")',                   # Upload dialog button
+                'button:has-text("Add source")',                       # Alternative text
+                'mat-chip:has-text("Upload")',                         # Upload chip after Add button
+                'input[type="file"]',                                  # Direct file input
             ]
             
             upload_element = None
@@ -443,28 +517,359 @@ class NotebookLMAutomator:
             self.logger.info(f"Upload element tag name: {upload_element_tag_name}")
 
             # Handle file input
-            if upload_element_tag_name == 'INPUT' and upload_element.get_attribute('type') == 'file':
+            if upload_element_tag_name == 'INPUT':
+                # Direct file input element
                 await upload_element.set_input_files(file_path)
             else:
-                # Click upload button and handle file dialog
+                # Click upload button to activate file dialog
                 await upload_element.click()
                 await self.page.wait_for_timeout(1000)
-                
-                # Handle file dialog (this might need adjustment based on actual interface)
-                file_input = await self.page.wait_for_selector('input[type="file"]', timeout=5000)
+
+                # Find hidden file input (NotebookLM uses hidden input with aria-hidden="true")
+                # Don't wait for visibility - set files directly on hidden input
+                file_input_selectors = [
+                    'input[type="file"][name="Filedata"]',  # NotebookLM specific
+                    'input[type="file"]',                   # Generic fallback
+                ]
+
+                file_input = None
+                for selector in file_input_selectors:
+                    try:
+                        # Use query_selector to get element even if hidden
+                        file_input = await self.page.query_selector(selector)
+                        if file_input:
+                            self.logger.info(f"✅ Found file input: {selector}")
+                            break
+                    except:
+                        continue
+
                 if file_input:
+                    # Set files on hidden input directly
                     await file_input.set_input_files(file_path)
+                else:
+                    self.logger.error("❌ Could not find file input element")
+                    return None
             
             # Wait for upload to complete
             await self.page.wait_for_timeout(5000)
-            
+
             self.logger.info("✅ Document upload completed")
-            return True
-            
+            self.logger.info(f"📋 Uploaded to notebook: {current_notebook_id}")
+            return current_notebook_id
+
         except Exception as e:
             self.logger.error(f"❌ Failed to upload document: {e}")
-            return False
-    
+            return None
+
+    async def add_url_source(self, url: str, notebook_id: str = None) -> Optional[str]:
+        """
+        Add a URL source (website, YouTube, etc.) to NotebookLM.
+
+        Args:
+            url (str): URL to add as source (SimExp session, website, YouTube, etc.)
+            notebook_id (str): Optional. If provided, add source to this existing notebook.
+                               If None, create a new notebook.
+
+        Returns:
+            Optional[str]: Notebook ID where URL was added, or None if add failed
+        """
+        try:
+            if not self.page:
+                self.logger.error("❌ No browser page available")
+                return None
+
+            self.logger.info(f"🔗 Adding URL source: {url}")
+
+            current_notebook_id = notebook_id
+
+            # Navigate to notebook or create new one (same logic as file upload)
+            if notebook_id:
+                self.logger.info(f"📓 Navigating to existing notebook: {notebook_id}")
+                if not await self.navigate_to_notebook(notebook_id=notebook_id):
+                    self.logger.error(f"❌ Failed to navigate to notebook {notebook_id}")
+                    return None
+            else:
+                # Check if on main page or in notebook
+                try:
+                    recent_notebooks_header = await self.page.is_visible('h2:has-text("Recent notebooks")')
+                except:
+                    recent_notebooks_header = False
+
+                if recent_notebooks_header:
+                    # Create new notebook
+                    notebook_data = await self.create_notebook()
+                    if not notebook_data:
+                        self.logger.error("❌ Failed to create new notebook")
+                        return None
+                    current_notebook_id = notebook_data['id']
+                else:
+                    # Extract ID from current URL
+                    current_url = self.page.url
+                    if '/notebook/' in current_url:
+                        parts = current_url.split('/notebook/')
+                        if len(parts) > 1:
+                            current_notebook_id = parts[1].split('?')[0].split('#')[0].split('/')[0]
+
+            # Check if "Add sources" dialog is already open (happens with new notebooks)
+            # If so, we can skip navigating to Sources tab
+            dialog_already_open = False
+            try:
+                existing_dialog = await self.page.query_selector('.cdk-overlay-pane')
+                if existing_dialog:
+                    is_visible = await existing_dialog.is_visible()
+                    if is_visible:
+                        self.logger.info("✅ Add sources dialog already open, skipping Sources tab navigation")
+                        dialog_already_open = True
+            except:
+                pass
+
+            # Navigate to Sources tab only if dialog is not already open
+            if not dialog_already_open:
+                sources_tab_selector = 'div[role="tab"]:has-text("Sources")'
+                try:
+                    sources_tab = await self.page.wait_for_selector(sources_tab_selector, timeout=5000)
+                    if sources_tab:
+                        is_active = await sources_tab.get_attribute('aria-selected')
+                        if is_active != 'true':
+                            self.logger.info("📑 Switching to Sources tab...")
+                            await sources_tab.click()
+                            await self.page.wait_for_timeout(500)
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Could not find Sources tab: {e}")
+
+            # Check if notebook already has sources - if so, click "+ Add" button first
+            # ♠️ Jerry: When sources exist, need to click Add button to show upload options
+            add_button_selectors = [
+                'button:has-text("Add")',
+                'button[aria-label*="Add"]',
+                'button:has-text("+ Add")'
+            ]
+
+            for selector in add_button_selectors:
+                try:
+                    add_button = await self.page.wait_for_selector(selector, timeout=2000)
+                    if add_button:
+                        is_visible = await add_button.is_visible()
+                        if is_visible:
+                            self.logger.info("➕ Clicking Add button to show source options...")
+                            await add_button.click()
+                            await self.page.wait_for_timeout(1000)
+                            break
+                except:
+                    continue
+
+            # Detect URL type and select appropriate chip
+            # ♠️ Jerry: YouTube URLs need YouTube chip, others need Website chip
+            is_youtube = 'youtube.com' in url.lower() or 'youtu.be' in url.lower()
+
+            if is_youtube:
+                chip_type = "YouTube"
+                chip_selectors = [
+                    'mat-chip:has-text("YouTube")',
+                    'button:has-text("YouTube")',
+                    'mat-chip:has(mat-icon:has-text("video_youtube"))',
+                    '[aria-label*="YouTube"]'
+                ]
+            else:
+                chip_type = "Website"
+                chip_selectors = [
+                    'mat-chip:has-text("Website")',
+                    'button:has-text("Website")',
+                    '[aria-label*="Website"]'
+                ]
+
+            self.logger.info(f"🔍 Looking for {chip_type} chip...")
+            source_chip = None
+            for selector in chip_selectors:
+                try:
+                    element = await self.page.wait_for_selector(selector, timeout=5000)
+                    if element:
+                        source_chip = element
+                        self.logger.info(f"✅ Found {chip_type} chip: {selector}")
+                        break
+                except:
+                    continue
+
+            if not source_chip:
+                self.logger.error(f"❌ Could not find {chip_type} chip")
+                return None
+
+            # Click the appropriate chip
+            self.logger.info(f"🖱️ Clicking {chip_type} chip...")
+            await source_chip.click()
+
+            # Wait for dialog/modal to appear
+            self.logger.info("⏳ Waiting for URL dialog to appear...")
+            dialog_appeared = False
+            dialog_selectors = [
+                'div[role="dialog"]',
+                '.cdk-overlay-pane',
+                '.mat-dialog-container',
+                'mat-dialog-container'
+            ]
+
+            dialog = None
+            for selector in dialog_selectors:
+                try:
+                    dialog = await self.page.wait_for_selector(selector, timeout=10000, state='visible')
+                    if dialog:
+                        dialog_appeared = True
+                        self.logger.info(f"✅ Dialog appeared: {selector}")
+                        break
+                except:
+                    continue
+
+            if not dialog_appeared:
+                self.logger.warning("⚠️ Dialog did not appear, will try to find input anyway...")
+                await self.page.wait_for_timeout(3000)  # Wait a bit more
+
+            # Find URL input field - search more broadly including within dialog
+            self.logger.info("🔍 Looking for URL input field...")
+            url_input_selectors = [
+                # NotebookLM uses a textarea for URL input!
+                '.cdk-overlay-pane textarea',
+                'div[role="dialog"] textarea',
+                'textarea[formcontrolname="newUrl"]',
+                'textarea#mat-input-0',
+                'textarea.text-area',
+                # Fallback to inputs
+                '.cdk-overlay-pane input',
+                'div[role="dialog"] input',
+                '.mat-dialog-container input',
+                # Then try specific attributes
+                'input[placeholder*="URL"]',
+                'textarea[placeholder*="URL"]',
+                'input[placeholder*="paste"]',
+                'textarea[placeholder*="paste"]',
+            ]
+
+            url_input = None
+            for selector in url_input_selectors:
+                try:
+                    elements = await self.page.query_selector_all(selector)
+                    for element in elements:
+                        try:
+                            is_visible = await element.is_visible()
+                            if is_visible:
+                                # Check if it's in the dialog if we found one
+                                if dialog_appeared and dialog:
+                                    # Try to see if this element is within the dialog
+                                    try:
+                                        bounding_box = await element.bounding_box()
+                                        if bounding_box:
+                                            url_input = element
+                                            self.logger.info(f"✅ Found URL input in dialog: {selector}")
+                                            break
+                                    except:
+                                        pass
+                                else:
+                                    # No dialog, just use first visible
+                                    url_input = element
+                                    self.logger.info(f"✅ Found URL input: {selector}")
+                                    break
+                        except:
+                            continue
+                    if url_input:
+                        break
+                except:
+                    continue
+
+            if not url_input:
+                self.logger.error("❌ Could not find URL input field")
+                # Save screenshot for debugging
+                await self.page.screenshot(path="debug/url_input_not_found.png")
+                self.logger.info("📸 Screenshot saved: debug/url_input_not_found.png")
+                return None
+
+            # Enter URL
+            self.logger.info(f"⌨️ Typing URL: {url}")
+            await url_input.click()
+            await self.page.wait_for_timeout(500)
+            await url_input.fill(url)  # Use fill instead of keyboard.type - it's faster and more reliable
+            await self.page.wait_for_timeout(1000)
+
+            # Click Insert button instead of pressing Enter
+            self.logger.info("🔍 Looking for Insert button...")
+            insert_button_selectors = [
+                'button:has-text("Insert")',
+                'button.mdc-button:has-text("Insert")',
+                '.cdk-overlay-pane button:has-text("Insert")',
+                'button[type="submit"]',
+                'button:has(.mdc-button__label:has-text("Insert"))'
+            ]
+
+            insert_button = None
+            for selector in insert_button_selectors:
+                try:
+                    element = await self.page.wait_for_selector(selector, timeout=5000)
+                    if element:
+                        is_visible = await element.is_visible()
+                        if is_visible:
+                            insert_button = element
+                            self.logger.info(f"✅ Found Insert button: {selector}")
+                            break
+                except:
+                    continue
+
+            if insert_button:
+                self.logger.info("🖱️ Clicking Insert button...")
+                await insert_button.click()
+                await self.page.wait_for_timeout(5000)  # Wait for URL to be processed
+            else:
+                # Fallback: press Enter if Insert button not found
+                self.logger.warning("⚠️ Insert button not found, trying Enter key...")
+                await self.page.keyboard.press('Enter')
+                await self.page.wait_for_timeout(5000)
+
+            self.logger.info("✅ URL source added successfully")
+            self.logger.info(f"📋 Added to notebook: {current_notebook_id}")
+            return current_notebook_id
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to add URL source: {e}")
+            return None
+
+    async def add_source(self, source: str, notebook_id: str = None) -> Optional[str]:
+        """
+        Smart source addition - automatically detects source type and routes appropriately.
+
+        This is the recommended high-level method for adding any source to NotebookLM.
+        It intelligently detects whether the source is a URL or file path and calls
+        the appropriate underlying method.
+
+        Args:
+            source (str): Source to add - can be:
+                         - URL (http://..., https://...)
+                         - File path (relative or absolute)
+            notebook_id (str): Optional. If provided, add source to this existing notebook.
+                              If None, create a new notebook.
+
+        Returns:
+            Optional[str]: Notebook ID where source was added, or None if add failed
+
+        Examples:
+            # Add URL source
+            await automator.add_source("https://example.com/article")
+
+            # Add file source
+            await automator.add_source("/path/to/document.pdf")
+
+            # Add to existing notebook
+            await automator.add_source("research.pdf", notebook_id="abc123")
+        """
+        try:
+            # Detect source type by checking for URL prefix
+            if source.startswith(('http://', 'https://')):
+                self.logger.info(f"🔍 Detected URL source: {source}")
+                return await self.add_url_source(source, notebook_id)
+            else:
+                self.logger.info(f"🔍 Detected file source: {source}")
+                return await self.upload_document(source, notebook_id)
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to add source: {e}")
+            return None
+
     async def generate_audio_overview(self, title: str = "Generated Podcast") -> bool:
         """
         Generate an Audio Overview (podcast) from uploaded documents.
@@ -723,12 +1128,27 @@ class NotebookLMAutomator:
 
             # Navigate to the notebook URL
             await self.page.goto(target_url, timeout=30000)
-            await self.page.wait_for_load_state('networkidle', timeout=30000)
+
+            # Wait for load state (use 'load' instead of 'networkidle' - networkidle can hang with background polling)
+            try:
+                await self.page.wait_for_load_state('load', timeout=10000)
+            except:
+                # If load state times out, continue anyway - URL check below will verify
+                self.logger.warning("⚠️ Load state timeout, but continuing with URL verification...")
 
             # Verify notebook loaded successfully
+            # First check if URL contains /notebook/ - most reliable indicator
+            current_url = self.page.url
+            if '/notebook/' in current_url:
+                self.logger.info(f"✅ Notebook URL verified: {current_url}")
+                self.logger.info(f"✅ Successfully navigated to notebook")
+                return True
+
             # Multi-selector strategy for notebook verification
             notebook_indicators = [
                 'mat-card.create-new-action-button',  # Sources panel
+                'h2:has-text("Add sources")',          # Add sources dialog header
+                'div[role="dialog"]',                  # Any dialog (add sources)
                 'button:has-text("Audio Overview")',  # Audio Overview button
                 '[data-testid="notebook-content"]',   # Notebook content area
                 '.notebook-title',                     # Notebook title

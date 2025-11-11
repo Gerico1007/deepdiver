@@ -121,6 +121,37 @@ deepdiver podcast list
 deepdiver podcast download --id podcast-123
 ```
 
+### Notebook Commands
+
+```bash
+# Create a new notebook (empty)
+deepdiver notebook create
+
+# Create notebook with a SimExp note as source
+deepdiver notebook create --source "https://app.simplenote.com/p/abc123"
+
+# Create notebook with web article
+deepdiver notebook create --source "https://example.com/research-paper"
+
+# Create notebook with YouTube video
+deepdiver notebook create --source "https://youtube.com/watch?v=dQw4w9WgXcQ"
+
+# Create notebook with local file
+deepdiver notebook create --source "./notes.pdf"
+
+# List notebooks in current session
+deepdiver notebook list
+
+# Open specific notebook in browser
+deepdiver notebook open --notebook-id abc-123
+
+# Get notebook URL
+deepdiver notebook url --notebook-id abc-123
+
+# Share notebook with collaborator
+deepdiver notebook share --notebook-id abc-123 --email user@example.com
+```
+
 ### Content Commands
 
 ```bash
@@ -222,6 +253,39 @@ python tests/test_session_management.py
 ---
 
 ## 🎓 How It Works
+
+### SimExp Integration Flow
+
+DeepDiver integrates seamlessly with [SimExp](https://github.com/jgwill/simexp) for a complete content-to-podcast workflow:
+
+```
+1. Create Content in SimExp
+   ↓
+   simexp session start --ai claude --issue 4
+   simexp session write "Research findings..."
+   simexp session add ./research.pdf
+   ↓
+2. Publish SimExp Note
+   ↓
+   simexp session publish
+   # Returns: https://app.simplenote.com/p/abc123
+   ↓
+3. Create DeepDiver Notebook with SimExp Source
+   ↓
+   deepdiver notebook create --source "https://app.simplenote.com/p/abc123"
+   ↓
+4. Generate Podcast from Combined Content
+   ↓
+   deepdiver podcast generate
+   ↓
+5. Listen to Your Research Audio Overview!
+```
+
+**Benefits**:
+- 🎯 Terminal-to-Audio pipeline
+- 📝 Session-aware content tracking
+- 🌐 Cross-device accessibility
+- 🔗 Traceable content lineage
 
 ### Podcast Creation Flow
 

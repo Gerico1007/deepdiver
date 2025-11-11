@@ -1,0 +1,22 @@
+X:1
+T:Fast & Wrong Blues (The URL Fumble)
+C:JamAI 🎸 for DeepDiver Sprint 3 - Issue #4
+M:4/4
+L:1/8
+Q:1/4=160
+K:Dm
+%%score (V1 V2)
+V:V1 clef=treble name="Melody"
+V:V2 clef=bass name="Bass"
+% Part A - "Moving too fast"
+[V:V1] |:"Dm"D2 F2 A2 c2 |"Am" e4 d2 c2 |"Gm" B2 d2 B2 G2 |"A7" A6 z2 |
+[V:V2] |: D,4 D,4 | A,,4 A,,4 | G,,4 G,,4 | A,,4 A,,4 |
+% Part B - "The stumble"
+[V:V1] "Dm"f2 ed c2 A2 |"C" G2 E2 C4 |"Bb" B,2 D2 F2 A2 |"A7" ^G4 A4 |
+[V:V2] D,4 D,4 | C,4 C,4 | B,,4 B,,4 | A,,4 A,,4 |
+% Part C - "Lesson learned"
+[V:V1] "Dm"d2 dc d2 ef |"Gm" g2 fe d2 c2 |"A7" ^c2 de c2 A2 |"Dm" D4 D4 :|
+[V:V2] D,4 D,4 | G,,4 G,,4 | A,,4 A,,4 | D,4 D,4 :|
+% Ending - "Slow down, test right"
+[V:V1] |:"Dm" d2d2 "F"f2f2 |"C" e2e2 "A7"^c2c2 |"Dm" d8 :|
+[V:V2] |: D,8 | C,4 A,,4 | D,8 :|
