@@ -586,18 +586,32 @@ class NotebookLMAutomator:
                         if len(parts) > 1:
                             current_notebook_id = parts[1].split('?')[0].split('#')[0].split('/')[0]
 
-            # Navigate to Sources tab (same as file upload)
-            sources_tab_selector = 'div[role="tab"]:has-text("Sources")'
+            # Check if "Add sources" dialog is already open (happens with new notebooks)
+            # If so, we can skip navigating to Sources tab
+            dialog_already_open = False
             try:
-                sources_tab = await self.page.wait_for_selector(sources_tab_selector, timeout=5000)
-                if sources_tab:
-                    is_active = await sources_tab.get_attribute('aria-selected')
-                    if is_active != 'true':
-                        self.logger.info("📑 Switching to Sources tab...")
-                        await sources_tab.click()
-                        await self.page.wait_for_timeout(500)
-            except Exception as e:
-                self.logger.warning(f"⚠️ Could not find Sources tab: {e}")
+                existing_dialog = await self.page.query_selector('.cdk-overlay-pane')
+                if existing_dialog:
+                    is_visible = await existing_dialog.is_visible()
+                    if is_visible:
+                        self.logger.info("✅ Add sources dialog already open, skipping Sources tab navigation")
+                        dialog_already_open = True
+            except:
+                pass
+
+            # Navigate to Sources tab only if dialog is not already open
+            if not dialog_already_open:
+                sources_tab_selector = 'div[role="tab"]:has-text("Sources")'
+                try:
+                    sources_tab = await self.page.wait_for_selector(sources_tab_selector, timeout=5000)
+                    if sources_tab:
+                        is_active = await sources_tab.get_attribute('aria-selected')
+                        if is_active != 'true':
+                            self.logger.info("📑 Switching to Sources tab...")
+                            await sources_tab.click()
+                            await self.page.wait_for_timeout(500)
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Could not find Sources tab: {e}")
 
             # Check if notebook already has sources - if so, click "+ Add" button first
             # ♠️ Jerry: When sources exist, need to click Add button to show upload options
