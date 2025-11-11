@@ -634,32 +634,45 @@ class NotebookLMAutomator:
                 except:
                     continue
 
-            # Find and click Website chip
-            # ♠️ Jerry: mat-chip with Website text
-            website_chip_selectors = [
-                'mat-chip:has-text("Website")',
-                'button:has-text("Website")',
-                '[aria-label*="Website"]'
-            ]
+            # Detect URL type and select appropriate chip
+            # ♠️ Jerry: YouTube URLs need YouTube chip, others need Website chip
+            is_youtube = 'youtube.com' in url.lower() or 'youtu.be' in url.lower()
 
-            website_chip = None
-            for selector in website_chip_selectors:
+            if is_youtube:
+                chip_type = "YouTube"
+                chip_selectors = [
+                    'mat-chip:has-text("YouTube")',
+                    'button:has-text("YouTube")',
+                    'mat-chip:has(mat-icon:has-text("video_youtube"))',
+                    '[aria-label*="YouTube"]'
+                ]
+            else:
+                chip_type = "Website"
+                chip_selectors = [
+                    'mat-chip:has-text("Website")',
+                    'button:has-text("Website")',
+                    '[aria-label*="Website"]'
+                ]
+
+            self.logger.info(f"🔍 Looking for {chip_type} chip...")
+            source_chip = None
+            for selector in chip_selectors:
                 try:
                     element = await self.page.wait_for_selector(selector, timeout=5000)
                     if element:
-                        website_chip = element
-                        self.logger.info(f"✅ Found Website chip: {selector}")
+                        source_chip = element
+                        self.logger.info(f"✅ Found {chip_type} chip: {selector}")
                         break
                 except:
                     continue
 
-            if not website_chip:
-                self.logger.error("❌ Could not find Website chip")
+            if not source_chip:
+                self.logger.error(f"❌ Could not find {chip_type} chip")
                 return None
 
-            # Click Website chip
-            self.logger.info("🖱️ Clicking Website chip...")
-            await website_chip.click()
+            # Click the appropriate chip
+            self.logger.info(f"🖱️ Clicking {chip_type} chip...")
+            await source_chip.click()
 
             # Wait for dialog/modal to appear
             self.logger.info("⏳ Waiting for URL dialog to appear...")
