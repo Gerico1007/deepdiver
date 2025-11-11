@@ -8,8 +8,8 @@ Part of Jerry's G.Music Assembly ecosystem.
 """
 
 __version__ = "0.1.0"
-__author__ = "Jerry's G.Music Assembly"
-__email__ = ""
+__author__ = "gerico1007"
+__email__ = "gerico@jgwill.com"
 __description__ = "NotebookLM Podcast Automation System"
 
 # Assembly Team
