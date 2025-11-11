@@ -737,10 +737,38 @@ class NotebookLMAutomator:
             await url_input.fill(url)  # Use fill instead of keyboard.type - it's faster and more reliable
             await self.page.wait_for_timeout(1000)
 
-            # Submit (press Enter)
-            self.logger.info("↵ Pressing Enter to submit...")
-            await self.page.keyboard.press('Enter')
-            await self.page.wait_for_timeout(5000)  # Wait for URL to be processed
+            # Click Insert button instead of pressing Enter
+            self.logger.info("🔍 Looking for Insert button...")
+            insert_button_selectors = [
+                'button:has-text("Insert")',
+                'button.mdc-button:has-text("Insert")',
+                '.cdk-overlay-pane button:has-text("Insert")',
+                'button[type="submit"]',
+                'button:has(.mdc-button__label:has-text("Insert"))'
+            ]
+
+            insert_button = None
+            for selector in insert_button_selectors:
+                try:
+                    element = await self.page.wait_for_selector(selector, timeout=5000)
+                    if element:
+                        is_visible = await element.is_visible()
+                        if is_visible:
+                            insert_button = element
+                            self.logger.info(f"✅ Found Insert button: {selector}")
+                            break
+                except:
+                    continue
+
+            if insert_button:
+                self.logger.info("🖱️ Clicking Insert button...")
+                await insert_button.click()
+                await self.page.wait_for_timeout(5000)  # Wait for URL to be processed
+            else:
+                # Fallback: press Enter if Insert button not found
+                self.logger.warning("⚠️ Insert button not found, trying Enter key...")
+                await self.page.keyboard.press('Enter')
+                await self.page.wait_for_timeout(5000)
 
             self.logger.info("✅ URL source added successfully")
             self.logger.info(f"📋 Added to notebook: {current_notebook_id}")
