@@ -675,19 +675,21 @@ class NotebookLMAutomator:
             # Find URL input field - search more broadly including within dialog
             self.logger.info("🔍 Looking for URL input field...")
             url_input_selectors = [
-                # Try scoped to dialog first if we have one
-                'div[role="dialog"] input',
+                # NotebookLM uses a textarea for URL input!
+                '.cdk-overlay-pane textarea',
+                'div[role="dialog"] textarea',
+                'textarea[formcontrolname="newUrl"]',
+                'textarea#mat-input-0',
+                'textarea.text-area',
+                # Fallback to inputs
                 '.cdk-overlay-pane input',
+                'div[role="dialog"] input',
                 '.mat-dialog-container input',
                 # Then try specific attributes
                 'input[placeholder*="URL"]',
-                'input[placeholder*="link"]',
+                'textarea[placeholder*="URL"]',
                 'input[placeholder*="paste"]',
-                'input[aria-label*="URL"]',
-                'input[type="url"]',
-                # Last resort - any visible text input NOT the title
-                'input[type="text"]:not(.title-input)',
-                'input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not(.title-input)'
+                'textarea[placeholder*="paste"]',
             ]
 
             url_input = None
