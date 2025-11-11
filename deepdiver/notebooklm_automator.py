@@ -459,6 +459,27 @@ class NotebookLMAutomator:
                 self.logger.warning(f"⚠️ Could not find Sources tab: {e}")
                 # Continue anyway - might already be on Sources tab
 
+            # Check if notebook already has sources - if so, click "+ Add" button first
+            # ♠️ Jerry: When sources exist, need to click Add button to show upload options
+            add_button_selectors = [
+                'button:has-text("Add")',
+                'button:has-text("+ Add")',
+                'button[aria-label*="Add"]',
+            ]
+
+            for selector in add_button_selectors:
+                try:
+                    add_button = await self.page.wait_for_selector(selector, timeout=2000)
+                    if add_button:
+                        is_visible = await add_button.is_visible()
+                        if is_visible:
+                            self.logger.info("➕ Clicking Add button to show source options...")
+                            await add_button.click()
+                            await self.page.wait_for_timeout(1000)
+                            break
+                except:
+                    continue
+
             # Now we should be inside a notebook on Sources tab, look for the upload button.
             # ♠️ Nyro: Real NotebookLM upload button selector from Jerry ⚡
             upload_selectors = [
@@ -467,6 +488,7 @@ class NotebookLMAutomator:
                 'mat-card.create-new-action-button',                   # Legacy selector
                 'button:has-text("Upload sources")',                   # Upload dialog button
                 'button:has-text("Add source")',                       # Alternative text
+                'mat-chip:has-text("Upload")',                         # Upload chip after Add button
                 'input[type="file"]',                                  # Direct file input
             ]
             
