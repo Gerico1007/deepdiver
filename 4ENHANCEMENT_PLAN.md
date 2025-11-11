@@ -229,25 +229,34 @@ This enhancement embodies the **G.Music Assembly** philosophy:
 
 ## 📊 Current Status
 
-**Phase**: ✅ **COMPLETE AND TESTED**
+**Phase**: ✅ **COMPLETE AND TESTED - PR READY**
 **Progress**: 100%
 **Blockers**: None
-**Status**: Ready for PR to main
+**Status**: PR #5 Updated and Ready for Review
 
 ### Final Test Results
 
-✅ **Live tested with SimExp URL:** `https://app.simplenote.com/p/xzhM3t`
+#### notebook create --source
+✅ **SimExp URL:** `https://app.simplenote.com/p/xzhM3t`
 ✅ **Notebook created:** `fcd3c433-2e5c-482e-bd15-40d6b503c14b`
 ✅ **Source successfully added and visible in NotebookLM**
-✅ **Session metadata tracking working**
 ✅ **Performance optimized:** 56% faster (53s → 23s)
+
+#### notebook add-source (Universal Support)
+✅ **SimExp URL:** `https://app.simplenote.com/p/8WCsV9` - Added successfully
+✅ **YouTube URL:** `https://youtube.com/watch?v=dQw4w9WgXcQ` - Correct chip detection
+✅ **Local File:** `./README.md` - File upload working
+✅ **Session tracking:** All source types properly tracked
 
 ### Bug Fixes Applied
 
 1. **URL Input Detection** (`f60bdfc`) - Improved dialog and input field detection
 2. **Textarea Element** (`ddff7df`) - Critical fix: NotebookLM uses `<textarea>`, not `<input>`
 3. **Insert Button** (`58a3f6c`) - Critical fix: Must click "Insert" button, not press Enter
-4. **Performance** (`3b8af03`) - Skip Sources tab when dialog already open
+4. **Performance** (`3b8af03`) - Skip Sources tab when dialog already open (56% faster)
+5. **YouTube Detection** (`fd88140`) - Auto-detect YouTube URLs and use correct chip
+6. **Add Button** (`ceac1f1`, `1dd6a2d`) - Click Add button for notebooks with existing sources
+7. **Universal add-source** (`e961af8`) - Accept URLs and files, not just files
 
 ### Commits Pushed
 
@@ -257,9 +266,21 @@ This enhancement embodies the **G.Music Assembly** philosophy:
 - `ddff7df` - fix: Use textarea selector for URL input field
 - `58a3f6c` - fix: Click Insert button instead of pressing Enter
 - `3b8af03` - perf: Skip Sources tab click if Add sources dialog already open
+- `fd88140` - feat: Add YouTube URL detection and chip selection
+- `ceac1f1` - fix: Click Add button before uploading to notebooks with existing sources
+- `1dd6a2d` - refactor: Improve Add button selectors with exact attributes
+- `e961af8` - fix: Enable notebook add-source to accept URLs and files
+
+### Pull Request
+
+**PR #5**: https://github.com/Gerico1007/deepdiver/pull/5
+- All commits pushed to `4-source-upload-automation` branch
+- PR description updated with complete enhancement summary
+- Ready for review and merge to main
 
 ---
 
 **♠️🌿🎸🧵 Where Content Becomes Audio Through Terminal-to-Web Harmony**
 
 **MISSION ACCOMPLISHED** 🎉
+**PR #5 READY FOR MERGE** 🚀
