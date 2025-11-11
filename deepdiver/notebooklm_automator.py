@@ -644,64 +644,101 @@ class NotebookLMAutomator:
                 return None
 
             # Click Website chip
+            self.logger.info("🖱️ Clicking Website chip...")
             await website_chip.click()
-            await self.page.wait_for_timeout(2000)  # Give dialog time to appear
 
-            # Find URL input field (may be in a dialog/modal)
+            # Wait for dialog/modal to appear
+            self.logger.info("⏳ Waiting for URL dialog to appear...")
+            dialog_appeared = False
+            dialog_selectors = [
+                'div[role="dialog"]',
+                '.cdk-overlay-pane',
+                '.mat-dialog-container',
+                'mat-dialog-container'
+            ]
+
+            dialog = None
+            for selector in dialog_selectors:
+                try:
+                    dialog = await self.page.wait_for_selector(selector, timeout=10000, state='visible')
+                    if dialog:
+                        dialog_appeared = True
+                        self.logger.info(f"✅ Dialog appeared: {selector}")
+                        break
+                except:
+                    continue
+
+            if not dialog_appeared:
+                self.logger.warning("⚠️ Dialog did not appear, will try to find input anyway...")
+                await self.page.wait_for_timeout(3000)  # Wait a bit more
+
+            # Find URL input field - search more broadly including within dialog
+            self.logger.info("🔍 Looking for URL input field...")
             url_input_selectors = [
-                'input[type="url"]',
-                'input[type="text"]',  # Sometimes it's just text input
+                # Try scoped to dialog first if we have one
+                'div[role="dialog"] input',
+                '.cdk-overlay-pane input',
+                '.mat-dialog-container input',
+                # Then try specific attributes
                 'input[placeholder*="URL"]',
-                'input[placeholder*="url"]',
                 'input[placeholder*="link"]',
-                'input[placeholder*="http"]',
+                'input[placeholder*="paste"]',
                 'input[aria-label*="URL"]',
-                'input[aria-label*="url"]',
-                'textarea'  # Fallback
+                'input[type="url"]',
+                # Last resort - any visible text input NOT the title
+                'input[type="text"]:not(.title-input)',
+                'input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not(.title-input)'
             ]
 
             url_input = None
             for selector in url_input_selectors:
                 try:
-                    element = await self.page.wait_for_selector(selector, timeout=5000)
-                    if element:
-                        # Check if it's visible and not a checkbox
-                        is_visible = await element.is_visible()
-                        input_type = await element.get_attribute('type') or ''
-                        if is_visible and input_type not in ['checkbox', 'radio', 'hidden']:
-                            url_input = element
-                            self.logger.info(f"✅ Found URL input: {selector}")
-                            break
+                    elements = await self.page.query_selector_all(selector)
+                    for element in elements:
+                        try:
+                            is_visible = await element.is_visible()
+                            if is_visible:
+                                # Check if it's in the dialog if we found one
+                                if dialog_appeared and dialog:
+                                    # Try to see if this element is within the dialog
+                                    try:
+                                        bounding_box = await element.bounding_box()
+                                        if bounding_box:
+                                            url_input = element
+                                            self.logger.info(f"✅ Found URL input in dialog: {selector}")
+                                            break
+                                    except:
+                                        pass
+                                else:
+                                    # No dialog, just use first visible
+                                    url_input = element
+                                    self.logger.info(f"✅ Found URL input: {selector}")
+                                    break
+                        except:
+                            continue
+                    if url_input:
+                        break
                 except:
                     continue
 
-            # Fallback: Find ANY visible text input (NotebookLM sometimes uses unmarked inputs)
-            if not url_input:
-                self.logger.info("🔍 Trying fallback: finding first visible text-capable input...")
-                try:
-                    all_inputs = await self.page.query_selector_all('input')
-                    for inp in all_inputs:
-                        is_visible = await inp.is_visible()
-                        input_type = await inp.get_attribute('type') or 'text'  # Empty type = text
-                        if is_visible and input_type not in ['checkbox', 'radio', 'hidden']:
-                            url_input = inp
-                            self.logger.info("✅ Found unmarked text input (likely URL field)")
-                            break
-                except Exception as e:
-                    self.logger.warning(f"⚠️ Fallback search failed: {e}")
-
             if not url_input:
                 self.logger.error("❌ Could not find URL input field")
+                # Save screenshot for debugging
+                await self.page.screenshot(path="debug/url_input_not_found.png")
+                self.logger.info("📸 Screenshot saved: debug/url_input_not_found.png")
                 return None
 
             # Enter URL
+            self.logger.info(f"⌨️ Typing URL: {url}")
             await url_input.click()
             await self.page.wait_for_timeout(500)
-            await self.page.keyboard.type(url, delay=50)
+            await url_input.fill(url)  # Use fill instead of keyboard.type - it's faster and more reliable
+            await self.page.wait_for_timeout(1000)
 
-            # Submit (press Enter or find submit button)
+            # Submit (press Enter)
+            self.logger.info("↵ Pressing Enter to submit...")
             await self.page.keyboard.press('Enter')
-            await self.page.wait_for_timeout(3000)  # Wait for URL to be added
+            await self.page.wait_for_timeout(5000)  # Wait for URL to be processed
 
             self.logger.info("✅ URL source added successfully")
             self.logger.info(f"📋 Added to notebook: {current_notebook_id}")
