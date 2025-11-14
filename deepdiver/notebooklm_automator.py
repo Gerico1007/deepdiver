@@ -1126,21 +1126,24 @@ class NotebookLMAutomator:
             # Step 4: Configure language (dropdown)
             self.logger.info(f"⚙️ Selecting language: {language}")
             language_selectors = [
-                'mat-select[aria-label*="language"]',
-                'mat-select[aria-label*="Language"]',
-                '.language-select',
-                'mat-select:has-text("Language")'
+                'mat-select[role="combobox"]',  # Primary: role-based
+                '.mat-mdc-select',              # Class-based
+                'mat-select',                   # Generic mat-select
+                'mat-select[aria-label*="language"]',  # Fallback
+                'mat-select[aria-label*="Language"]'
             ]
 
             language_select = None
             for selector in language_selectors:
                 try:
-                    element = await dialog.query_selector(selector)
-                    if element:
-                        is_visible = await element.is_visible()
-                        if is_visible:
-                            language_select = element
-                            break
+                    # Wait for language selector to appear (up to 5 seconds)
+                    language_select = await dialog.wait_for_selector(
+                        selector,
+                        timeout=5000,
+                        state='visible'
+                    )
+                    if language_select:
+                        break
                 except:
                     continue
 
@@ -1171,23 +1174,22 @@ class NotebookLMAutomator:
             # Step 5: Configure length (toggle button group)
             self.logger.info(f"⚙️ Selecting length: {length_display}")
             length_selectors = [
-                f'button.mat-button-toggle:has-text("{length_display}")',
-                f'.mat-button-toggle-group button:has-text("{length_display}")',
-                f'button[aria-label*="{length_display}"]'
+                f'mat-button-toggle:has-text("{length_display}") button',  # Primary: button inside toggle
+                f'button.mat-button-toggle-button:has-text("{length_display}")',  # Direct button class
+                f'.mat-button-toggle-group button:has-text("{length_display}")',  # Group context
+                f'mat-button-toggle button >> text="{length_display}"',  # Playwright text selector
+                f'button:has(.mat-button-toggle-label-content:has-text("{length_display}"))'  # Via label span
             ]
 
             length_button = None
             for selector in length_selectors:
                 try:
-                    elements = await dialog.query_selector_all(selector)
-                    for element in elements:
-                        try:
-                            is_visible = await element.is_visible()
-                            if is_visible:
-                                length_button = element
-                                break
-                        except:
-                            continue
+                    # Wait for button to appear (up to 5 seconds)
+                    length_button = await dialog.wait_for_selector(
+                        selector,
+                        timeout=5000,
+                        state='visible'
+                    )
                     if length_button:
                         break
                 except:
