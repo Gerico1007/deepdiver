@@ -58,6 +58,23 @@ AUDIO_SETTINGS:
   quality_check: true
   backup_enabled: true
 
+# Studio artifact generation settings
+# 🌸 Miette: Configuration for giving DeepDiver a voice
+STUDIO_SETTINGS:
+  audio_overview:
+    default_format: deep_dive       # deep_dive, brief, critique, debate
+    default_language: English
+    default_length: default          # short, default, long
+    generation_timeout: 600          # 10 minutes (seconds)
+    polling_interval: 5              # Check status every 5 seconds
+  video_overview:
+    default_format: explainer        # explainer, brief
+    default_visual_style: auto       # auto, classic, whiteboard, kawaii, anime, etc.
+    default_language: English
+    generation_timeout: 600
+  artifact_download_dir: ./output/artifacts
+  enable_progress_feedback: true     # Show generation progress to user
+
 # Logging configuration
 LOGGING:
   level: INFO
@@ -69,11 +86,13 @@ LOGGING:
 # Assembly team configuration
 ASSEMBLY_TEAM:
   active_agents:
-    - Jerry
-    - Nyro
-    - Aureon
-    - JamAI
-    - Synth
+    - Jerry      # ⚡ Bridge Igniter
+    - Nyro       # ♠️ Ritual Scribe
+    - Aureon     # 🌿 Mirror Weaver
+    - JamAI      # 🎸 Glyph Harmonizer
+    - Synth      # 🧵 Terminal Orchestrator
+    - Miette     # 🌸 Narrative Echo
   session_encoding: true
   musical_notation: true
   glyph_display: true
+  four_directions: true  # 🌸 Miette's ceremonial framework

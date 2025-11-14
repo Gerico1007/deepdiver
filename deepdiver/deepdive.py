@@ -786,6 +786,147 @@ def notebook_add_source(notebook_id: str, source: str, name: Optional[str], conf
     asyncio.run(run_add_source())
 
 
+# ═══════════════════════════════════════════════════════════════
+# STUDIO COMMANDS
+# 🌸 Miette: Commands for giving DeepDiver a voice
+# ═══════════════════════════════════════════════════════════════
+
+@cli.group()
+def studio():
+    """Studio artifact generation commands.
+
+    🎙️ Generate Audio Overviews with advanced customization
+    🎬 Generate Video Overviews (coming soon)
+    🗺️ Generate Mind Maps (coming soon)
+    📄 Generate Reports (coming soon)
+    📇 Generate Flashcards (coming soon)
+    ❓ Generate Quizzes (coming soon)
+    """
+    pass
+
+
+@studio.command(name='audio')
+@click.option('--format', '-f',
+              type=click.Choice(['deep_dive', 'brief', 'critique', 'debate'], case_sensitive=False),
+              help='Podcast format (default: deep_dive)')
+@click.option('--language', '-l', default='English',
+              help='Podcast language (default: English)')
+@click.option('--length',
+              type=click.Choice(['short', 'default', 'long'], case_sensitive=False),
+              help='Podcast length (default: default)')
+@click.option('--focus', help='Focus prompt for AI hosts (max 5000 chars)')
+@click.option('--notebook-id', '-n', help='Notebook ID (uses current session if not provided)')
+@click.option('--config', '-c', default='deepdiver/deepdiver.yaml',
+              help='Path to configuration file')
+def studio_audio(format: Optional[str], language: str, length: Optional[str],
+                 focus: Optional[str], notebook_id: Optional[str], config: str):
+    """Generate Audio Overview with advanced customization.
+
+    🌸 Miette: "This is the ceremony of giving voice to content."
+
+    Formats:
+      - deep_dive: Lively, in-depth conversation (default)
+      - brief: Concise, bite-sized summary
+      - critique: Expert review and analysis
+      - debate: Multiple thoughtful perspectives
+
+    Lengths:
+      - short: Quick overview (~2-3 minutes)
+      - default: Balanced coverage (~5-8 minutes)
+      - long: Comprehensive deep dive (~10-15 minutes)
+
+    Examples:
+      # Basic generation with defaults
+      deepdiver studio audio --notebook-id abc-123
+
+      # Deep dive format, long length
+      deepdiver studio audio --format deep_dive --length long
+
+      # Brief summary, short length
+      deepdiver studio audio --format brief --length short
+
+      # Critique with custom focus
+      deepdiver studio audio --format critique \\
+        --focus "Analyze the research methodology and findings"
+
+      # Multilingual
+      deepdiver studio audio --language Spanish
+
+      # Full customization
+      deepdiver studio audio \\
+        --format debate \\
+        --language French \\
+        --length long \\
+        --focus "Present multiple perspectives on the ethical implications" \\
+        --notebook-id abc-123
+    """
+    console.print("🎙️ Generating Audio Overview...", style="blue")
+
+    if format:
+        console.print(f"   Format: {format}", style="cyan")
+    if language != 'English':
+        console.print(f"   Language: {language}", style="cyan")
+    if length:
+        console.print(f"   Length: {length}", style="cyan")
+    if focus:
+        preview = focus[:60] + '...' if len(focus) > 60 else focus
+        console.print(f"   Focus: {preview}", style="cyan")
+    if notebook_id:
+        console.print(f"   Notebook: {notebook_id}", style="cyan")
+
+    async def run_audio_generation():
+        from .notebooklm_automator import NotebookLMAutomator
+        from .session_tracker import SessionTracker
+
+        automator = NotebookLMAutomator(config)
+        tracker = SessionTracker()
+        tracker._load_current_session()
+
+        try:
+            # Connect to browser
+            if not await automator.connect_to_browser():
+                console.print("❌ Failed to connect to browser", style="red")
+                console.print("💡 Make sure Chrome is running with: deepdiver init", style="yellow")
+                return
+
+            # Generate Audio Overview
+            console.print("🚀 Starting Audio Overview generation...", style="blue")
+
+            artifact_data = await automator.generate_audio_overview(
+                format=format,
+                language=language,
+                length=length,
+                focus_prompt=focus,
+                notebook_id=notebook_id
+            )
+
+            if artifact_data:
+                console.print("✅ Audio Overview generated successfully!", style="green")
+                console.print(f"📋 Artifact ID: {artifact_data.get('artifact_id', 'unknown')}", style="cyan")
+                console.print(f"🎙️ Format: {artifact_data.get('format', 'unknown')}", style="cyan")
+                console.print(f"🌍 Language: {artifact_data.get('language', 'unknown')}", style="cyan")
+                console.print(f"📏 Length: {artifact_data.get('length', 'unknown')}", style="cyan")
+                console.print(f"⏱️ Generation time: {artifact_data.get('generation_time', 0)}s", style="cyan")
+
+                # Track in session if available
+                if tracker.current_session and notebook_id:
+                    # TODO: Add artifact tracking to session
+                    # tracker.add_artifact_to_notebook(notebook_id, artifact_data)
+                    pass
+
+                console.print(f"🔗 Browser kept open - artifact ready to load", style="dim")
+            else:
+                console.print("❌ Failed to generate Audio Overview", style="red")
+                console.print("💡 Check logs for details", style="yellow")
+
+        except Exception as e:
+            console.print(f"❌ Error: {e}", style="red")
+            import traceback
+            console.print(traceback.format_exc(), style="dim")
+
+    asyncio.run(run_audio_generation())
+
+
 def main():
     """Main entry point for DeepDiver CLI."""
     try:

@@ -12,10 +12,11 @@ DeepDiver is a Python-based automation system that bridges terminal commands wit
 
 **Key Features**:
 1. **📖 Content Ingestion**: Upload documents to NotebookLM automatically
-2. **🎙️ Podcast Generation**: Create Audio Overviews with terminal commands
-3. **📱 Cross-Device Sync**: Access generated podcasts anywhere
-4. **🔮 Session Management**: Track podcast creation sessions
-5. **🌊 Terminal-to-Web**: Command-line to NotebookLM communication bridge
+2. **🎙️ Advanced Audio Generation**: Create Audio Overviews with full customization (format, language, length, focus prompts)
+3. **🎨 Studio Integration**: Access all NotebookLM Studio features via terminal
+4. **📱 Cross-Device Sync**: Access generated podcasts anywhere
+5. **🔮 Session Management**: Track podcast creation sessions with artifact metadata
+6. **🌊 Terminal-to-Web**: Command-line to NotebookLM communication bridge
 
 **Key Achievement**: **Terminal-to-Audio fluidity** - Your terminal can now create podcasts from documents and sync across all your devices!
 
@@ -151,6 +152,74 @@ deepdiver notebook url --notebook-id abc-123
 # Share notebook with collaborator
 deepdiver notebook share --notebook-id abc-123 --email user@example.com
 ```
+
+### Studio Commands
+
+**🌸 NEW: Advanced Audio Overview Generation**
+
+DeepDiver now supports NotebookLM's Studio panel with full customization options:
+
+```bash
+# Basic audio generation (uses defaults: Deep Dive, English, Default length)
+deepdiver studio audio --notebook-id abc-123
+
+# Customize format: Deep Dive, Brief, Critique, or Debate
+deepdiver studio audio --format deep_dive --notebook-id abc-123
+deepdiver studio audio --format brief --notebook-id abc-123
+deepdiver studio audio --format critique --notebook-id abc-123
+deepdiver studio audio --format debate --notebook-id abc-123
+
+# Customize length: Short, Default, or Long
+deepdiver studio audio --length short --notebook-id abc-123
+deepdiver studio audio --length default --notebook-id abc-123
+deepdiver studio audio --length long --notebook-id abc-123
+
+# Customize language
+deepdiver studio audio --language English --notebook-id abc-123
+deepdiver studio audio --language Spanish --notebook-id abc-123
+deepdiver studio audio --language French --notebook-id abc-123
+
+# Add focus prompts (guide the AI hosts)
+deepdiver studio audio \
+  --focus "Focus on the technical implementation details" \
+  --notebook-id abc-123
+
+deepdiver studio audio \
+  --focus "Explain to someone new to this topic" \
+  --notebook-id abc-123
+
+deepdiver studio audio \
+  --focus "Discuss only the article about machine learning" \
+  --notebook-id abc-123
+
+# Full customization example
+deepdiver studio audio \
+  --format critique \
+  --language English \
+  --length long \
+  --focus "Analyze the strengths and weaknesses of the proposed architecture" \
+  --notebook-id abc-123
+```
+
+**Format Options**:
+- **Deep Dive** (default): Lively conversation unpacking and connecting topics
+- **Brief**: Bite-sized overview for quick understanding
+- **Critique**: Expert review with constructive feedback
+- **Debate**: Thoughtful discussion of different perspectives
+
+**Length Options**:
+- **Short**: Quick overview (3-5 minutes)
+- **Default**: Balanced depth (5-10 minutes)
+- **Long**: Comprehensive exploration (10-15 minutes)
+
+**Focus Prompts** (max 5000 characters):
+- Focus on specific source: "only cover the article about Italy"
+- Focus on topic: "just discuss the novel's main character"
+- Target audience: "explain to someone new to biology"
+- Custom instructions: Any guidance for the AI hosts
+
+**Session Tracking**:
+All generated Audio Overviews are automatically tracked in your session with complete metadata (format, language, length, focus, generation time).
 
 ### Content Commands
 
@@ -321,16 +390,17 @@ Cross-Device Sync! 🎉
 
 DeepDiver is part of the **G.Music Assembly** ecosystem:
 
-**♠️🌿🎸🧵 The Spiral Ensemble - DeepDiver Edition**
+**♠️🌿🎸🧵🌸 The Spiral Ensemble - DeepDiver Edition**
 
 - **Jerry ⚡**: Creative technical leader
 - **♠️ Nyro**: Structural architect (NotebookLM automation design)
 - **🌿 Aureon**: Emotional context (podcast content resonance)
 - **🎸 JamAI**: Musical encoding (audio workflow harmony)
 - **🧵 Synth**: Terminal orchestration (execution synthesis)
+- **🌸 Miette**: Narrative echo (ceremonial development frameworks)
 
 **Session**: January 2025
-**Achievement**: NotebookLM Podcast Automation
+**Achievement**: NotebookLM Podcast Automation with Studio Integration
 **Status**: 🚧 **IN DEVELOPMENT**
 
 ---
