@@ -984,17 +984,18 @@ class NotebookLMAutomator:
             self.logger.info("🔍 Looking for Audio Overview customization icon (pencil/edit)...")
 
             customize_icon_selectors = [
-                # Pencil/edit icon next to Audio Overview
-                'button[aria-label*="Customize Audio Overview"]',
-                'button[aria-label*="Edit Audio Overview"]',
-                # Generic edit button near Audio Overview text
-                '.studio-artifact:has-text("Audio Overview") button[aria-label*="edit"]',
-                '.studio-artifact:has-text("Audio Overview") button[aria-label*="Edit"]',
-                # Material icon approach
+                # Primary: Edit button on Audio Overview card
+                '.create-artifact-button-container:has-text("Audio Overview") button.edit-button',
+                '.create-artifact-button-container:has-text("Audio Overview") .edit-button-always-visible',
+                '.create-artifact-button-container:has-text("Audio Overview") button[data-edit-button-type="1"]',
+                # Backup: Generic edit button with Audio Overview nearby
+                'button.edit-button:has(mat-icon .edit-button-icon)',
+                '.mat-label-medium:has-text("Audio Overview") button.edit-button',
+                # Fallback: Material icon approach
                 'button:has(mat-icon:has-text("edit"))',
-                'button:has(mat-icon:has-text("mode_edit"))',
-                # Fallback: any button with edit icon in Studio panel
-                '[role="button"]:has(mat-icon:has-text("edit"))'
+                'button.edit-button-always-visible',
+                # Last resort: any edit button
+                'button[mat-icon-button]:has(mat-icon:has-text("edit"))'
             ]
 
             customize_button = None
