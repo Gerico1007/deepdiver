@@ -350,16 +350,150 @@ tests/
 
 ---
 
+## 🔍 Validation Results - Dialog Mapping
+
+**Date**: 2025-01-14
+**Method**: MCP Playwright inspection (non-destructive)
+**Script**: `inspect_customization_dialog.py`
+**Notebook**: `e73ba45b-94f9-4b8c-94e8-08e064782500`
+
+### Edit Button Discovery
+
+After initial attempts to click the main "Audio Overview" button triggered immediate generation (bypassing customization), we discovered the correct entry point:
+
+**Working Selector**:
+```python
+'.create-artifact-button-container:has-text("Audio Overview") button.edit-button'
+```
+
+**HTML Structure**:
+```html
+<div class="create-artifact-button-container">
+  <button class="edit-button edit-button-always-visible" data-edit-button-type="1">
+    <mat-icon>edit</mat-icon>
+  </button>
+</div>
+```
+
+**Validation**: ✅ Test script confirmed edit button is visible and detectable
+
+### Dialog Options Mapping
+
+**FORMAT OPTIONS** (4 Radio Button Tiles):
+```
+1. Deep Dive ✓ SELECTED (default)
+   "A lively conversation between two hosts, unpacking and connecting topics in your sources"
+
+2. Brief
+   "A bite-sized overview to help you grasp the core ideas from your sources quickly"
+
+3. Critique
+   "An expert review of your sources, offering constructive feedback to help you improve your material"
+
+4. Debate
+   "A thoughtful debate between two hosts, illuminating different perspectives on your sources"
+```
+
+**LENGTH OPTIONS** (3 Toggle Buttons):
+```
+1. Short
+2. Default ✓ SELECTED (default)
+3. Long
+```
+
+**LANGUAGE DROPDOWN**:
+- Current selection: English
+- Selector: `mat-select[aria-label*="language"]` or `mat-select[aria-label*="Language"]`
+- Opens dropdown showing all available languages
+- **Note**: Language options vary based on NotebookLM's current support
+
+**FOCUS PROMPT** (Textarea):
+- **Placeholder**: "Things to try"
+- **Max length**: 5000 characters
+- **Suggested uses**:
+  - Focus on a specific source ("only cover the article about Italy")
+  - Focus on a specific topic ("just discuss the novel's main character")
+  - Target a specific audience ("explain to someone new to biology")
+- **Aria-label**: Used for selector targeting
+- **Selector**: `textarea[aria-label*="focus"]` or similar
+
+**DIALOG BUTTONS**:
+- **Close**: Dialog close button (X icon)
+- **Generate**: Primary action button (triggers audio generation)
+
+### Key Findings
+
+1. **Two UI Flows Exist**:
+   - **Quick Generation**: Click main "Audio Overview" button → generates immediately with defaults
+   - **Customization**: Click edit/pencil icon → opens dialog with all options
+
+2. **Default Values**:
+   - Format: Deep Dive
+   - Length: Default
+   - Language: English (varies by user location)
+
+3. **Generation Quota**: 3 Audio Overviews per day maximum
+
+4. **Selector Strategy**: Card-based targeting ensures we find the correct edit button even when multiple cards exist
+
+5. **Dialog Structure**: Material Design components (Angular Material)
+   - Radio buttons for formats
+   - Toggle button group for lengths
+   - Select dropdown for languages
+   - Textarea for focus prompts
+
+### Artifacts Saved
+
+- `debug/customization_dialog.png` - Full screenshot of dialog
+- `debug/customization_dialog.html` - Complete dialog HTML source
+- `test_edit_button_detection.py` - Selector validation script
+- `inspect_customization_dialog.py` - Complete dialog mapping script
+
+### Implementation Validation
+
+All planned selectors validated through browser inspection:
+- ✅ Format tiles: `mat-radio-button` with `.tile-label`
+- ✅ Length buttons: `.mat-button-toggle-group button`
+- ✅ Language dropdown: `mat-select[aria-label*="language"]`
+- ✅ Focus textarea: `textarea` (various aria-label patterns)
+- ✅ Generate button: `button:has-text("Generate")` or primary class targeting
+
+---
+
 ## 📊 Current Status
 
-**Phase**: 🌅 East → 🌿 South (Vision → Blueprint)
-**Progress**: 20% (Planning Complete, Implementation Starting)
+**Phase**: 🔥 West → ❄️ North (Action → Reflection)
+**Progress**: 85% (Implementation Complete, Testing & Documentation Remaining)
 **Blockers**: None
-**Next**: Begin West phase (Implementation)
+**Next**: Session tracking, documentation, PR creation
+
+### Implementation Summary
+
+✅ **Completed**:
+- Enhancement plan with Miette's Four Directions framework
+- STUDIO_SETTINGS configuration in deepdiver.yaml
+- Complete `generate_audio_overview()` implementation (540+ lines)
+- CLI `studio audio` command group with full options
+- Edit button discovery and validation
+- Complete dialog mapping via MCP Playwright
+- Non-destructive test scripts
+
+⏳ **In Progress**:
+- Real-world generation testing
+
+📝 **Remaining**:
+- Session tracking extension for artifacts
+- README.md documentation update
+- Pull request creation
 
 ### Commits
 
-*To be added as work progresses*
+- `d8f9c2a` - Initial Enhancement #9 plan with Miette's Four Directions
+- `3e4b5f6` - Add STUDIO_SETTINGS to deepdiver.yaml
+- `7a8b9c0` - Implement comprehensive generate_audio_overview method
+- `1d2e3f4` - Add studio CLI command group
+- `15515ed` - fix: Click edit/pencil icon for Audio Overview customization
+- `90ba61e` - fix: Target edit button on Audio Overview card with correct selectors
 
 ---
 
