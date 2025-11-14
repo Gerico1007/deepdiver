@@ -979,34 +979,71 @@ class NotebookLMAutomator:
             # Ensure we're on Sources tab (where Studio panel is located)
             await self._ensure_sources_tab_active()
 
-            # Step 1: Click Audio Overview button in Studio panel
-            self.logger.info("🔍 Looking for Audio Overview button in Studio panel...")
-            studio_button_selectors = [
-                'button:has-text("Audio Overview")',
-                '[aria-label*="Audio Overview"]',
-                '.studio-panel button:has-text("Audio")'
+            # Step 1: Look for the edit/pencil icon next to Audio Overview in Studio panel
+            # This is the correct entry point for customization
+            self.logger.info("🔍 Looking for Audio Overview customization icon (pencil/edit)...")
+
+            customize_icon_selectors = [
+                # Pencil/edit icon next to Audio Overview
+                'button[aria-label*="Customize Audio Overview"]',
+                'button[aria-label*="Edit Audio Overview"]',
+                # Generic edit button near Audio Overview text
+                '.studio-artifact:has-text("Audio Overview") button[aria-label*="edit"]',
+                '.studio-artifact:has-text("Audio Overview") button[aria-label*="Edit"]',
+                # Material icon approach
+                'button:has(mat-icon:has-text("edit"))',
+                'button:has(mat-icon:has-text("mode_edit"))',
+                # Fallback: any button with edit icon in Studio panel
+                '[role="button"]:has(mat-icon:has-text("edit"))'
             ]
 
-            studio_button = None
-            for selector in studio_button_selectors:
+            customize_button = None
+            for selector in customize_icon_selectors:
                 try:
-                    element = await self.page.wait_for_selector(selector, timeout=10000)
-                    if element:
-                        is_visible = await element.is_visible()
-                        if is_visible:
-                            studio_button = element
-                            self.logger.info(f"✅ Found Audio Overview button: {selector}")
-                            break
+                    elements = await self.page.query_selector_all(selector)
+                    for element in elements:
+                        try:
+                            is_visible = await element.is_visible()
+                            if is_visible:
+                                # Check if it's near "Audio Overview" text
+                                customize_button = element
+                                self.logger.info(f"✅ Found customize icon: {selector}")
+                                break
+                        except:
+                            continue
+                    if customize_button:
+                        break
                 except:
                     continue
 
-            if not studio_button:
-                self.logger.error("❌ Could not find Audio Overview button")
+            if not customize_button:
+                # Fallback: Try clicking main Audio Overview button (may trigger quick generation)
+                self.logger.warning("⚠️ Could not find customize icon, trying main Audio Overview button...")
+                studio_button_selectors = [
+                    'button:has-text("Audio Overview")',
+                    '[aria-label*="Audio Overview"]',
+                    '.studio-panel button:has-text("Audio")'
+                ]
+
+                for selector in studio_button_selectors:
+                    try:
+                        element = await self.page.wait_for_selector(selector, timeout=5000)
+                        if element:
+                            is_visible = await element.is_visible()
+                            if is_visible:
+                                customize_button = element
+                                self.logger.info(f"✅ Found Audio Overview button (fallback): {selector}")
+                                break
+                    except:
+                        continue
+
+            if not customize_button:
+                self.logger.error("❌ Could not find Audio Overview customization icon or button")
                 return None
 
-            # Click the Audio Overview button
-            self.logger.info("🖱️ Clicking Audio Overview button...")
-            await studio_button.click()
+            # Click the customize icon (or fallback button)
+            self.logger.info("🖱️ Clicking Audio Overview customize icon...")
+            await customize_button.click()
             await self.page.wait_for_timeout(2000)
 
             # Step 2: Look for customization dialog or Customize button
