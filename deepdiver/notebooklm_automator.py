@@ -1282,6 +1282,20 @@ class NotebookLMAutomator:
                 self.logger.info("✅ Audio Overview generated successfully!")
                 self.logger.info(f"📋 Artifact ID: {artifact_data.get('artifact_id', 'unknown')}")
                 self.logger.info(f"⏱️ Generation time: {artifact_data.get('generation_time', 0)}s")
+
+                # Track artifact in session if notebook_id is available
+                # 🌸 Miette: Recording the voice we created
+                if notebook_id and self.session_tracker:
+                    try:
+                        success = self.session_tracker.add_artifact_to_notebook(
+                            notebook_id,
+                            artifact_data
+                        )
+                        if success:
+                            self.logger.info(f"📝 Artifact tracked in session for notebook {notebook_id}")
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Could not track artifact in session: {e}")
+
                 return artifact_data
             else:
                 self.logger.error("❌ Audio Overview generation failed or timed out")
