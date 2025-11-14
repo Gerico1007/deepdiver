@@ -1001,18 +1001,14 @@ class NotebookLMAutomator:
             customize_button = None
             for selector in customize_icon_selectors:
                 try:
-                    elements = await self.page.query_selector_all(selector)
-                    for element in elements:
-                        try:
-                            is_visible = await element.is_visible()
-                            if is_visible:
-                                # Check if it's near "Audio Overview" text
-                                customize_button = element
-                                self.logger.info(f"✅ Found customize icon: {selector}")
-                                break
-                        except:
-                            continue
+                    # Wait for element to appear (up to 10 seconds)
+                    customize_button = await self.page.wait_for_selector(
+                        selector,
+                        timeout=10000,
+                        state='visible'
+                    )
                     if customize_button:
+                        self.logger.info(f"✅ Found customize icon: {selector}")
                         break
                 except:
                     continue
