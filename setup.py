@@ -12,8 +12,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setup(
     name="deepdiver",
     version="0.1.0",
-    author="Jerry's G.Music Assembly",
-    author_email="",
+    author="gerico1007",
+    author_email="gerico@jgwill.com",
     description="NotebookLM Podcast Automation System",
     long_description=long_description,
     long_description_content_type="text/markdown",

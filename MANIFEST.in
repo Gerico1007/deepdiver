@@ -1,0 +1,9 @@
+include README.md
+include LICENSE
+include ROADMAP.md
+include CLAUDE.md
+recursive-include deepdiver *.yaml *.yml
+recursive-include tests *.py
+global-exclude __pycache__
+global-exclude *.py[co]
+global-exclude .DS_Store
