@@ -1152,22 +1152,35 @@ class NotebookLMAutomator:
                 await language_select.click()
                 await self.page.wait_for_timeout(1000)
 
-                # Select language option
+                # Wait for overlay to appear (language options appear in CDK overlay)
+                try:
+                    await self.page.wait_for_selector('.cdk-overlay-pane', timeout=3000, state='visible')
+                except:
+                    pass
+
+                # Select language option (options appear in overlay, not dialog)
                 language_option_selectors = [
-                    f'mat-option:has-text("{language}")',
-                    f'[role="option"]:has-text("{language}")'
+                    f'.cdk-overlay-pane mat-option:has-text("{language}")',  # In overlay
+                    f'mat-option:has-text("{language}")',  # Generic
+                    f'.mat-mdc-option:has-text("{language}")',  # Class-based
+                    f'[role="option"]:has-text("{language}")'  # Role-based
                 ]
 
+                language_selected = False
                 for selector in language_option_selectors:
                     try:
-                        option = await self.page.wait_for_selector(selector, timeout=5000)
+                        option = await self.page.wait_for_selector(selector, timeout=5000, state='visible')
                         if option:
                             await option.click()
                             await self.page.wait_for_timeout(500)
                             self.logger.info(f"✅ Language selected: {language}")
+                            language_selected = True
                             break
                     except:
                         continue
+
+                if not language_selected:
+                    self.logger.warning(f"⚠️ Could not select language '{language}', using default")
             else:
                 self.logger.warning("⚠️ Could not find language selector, using default")
 
