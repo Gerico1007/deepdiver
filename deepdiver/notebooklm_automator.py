@@ -870,61 +870,609 @@ class NotebookLMAutomator:
             self.logger.error(f"❌ Failed to add source: {e}")
             return None
 
-    async def generate_audio_overview(self, title: str = "Generated Podcast") -> bool:
+    async def generate_audio_overview(
+        self,
+        format: str = None,
+        language: str = None,
+        length: str = None,
+        focus_prompt: str = None,
+        notebook_id: str = None
+    ) -> Optional[Dict[str, Any]]:
         """
-        Generate an Audio Overview (podcast) from uploaded documents.
-        
+        Generate an Audio Overview (podcast) with advanced customization.
+
+        🌸 Miette: This is the ceremony of giving voice to content.
+        🔥 West (Action): Where the code speaks and creates.
+
         Args:
-            title (str): Title for the generated podcast
-            
+            format (str): Podcast format - deep_dive, brief, critique, debate
+                         Default from config or 'deep_dive'
+            language (str): Podcast language - English, Spanish, French, etc.
+                           Default from config or 'English'
+            length (str): Podcast length - short, default, long
+                         Default from config or 'default'
+            focus_prompt (str): Custom focus instructions for AI hosts (max 5000 chars)
+                               Optional - guides the conversation direction
+            notebook_id (str): Target notebook ID (navigates if provided)
+                              Uses current notebook if None
+
         Returns:
-            bool: True if generation successful, False otherwise
+            Optional[Dict[str, Any]]: Artifact metadata if successful:
+                {
+                    'artifact_id': 'xyz-789',
+                    'type': 'audio_overview',
+                    'format': 'deep_dive',
+                    'language': 'English',
+                    'length': 'default',
+                    'focus_prompt': '...',
+                    'status': 'completed',
+                    'created_at': '2025-01-15T14:30:00',
+                    'generation_time': 245
+                }
+            Returns None if generation failed
+
+        Examples:
+            # Basic generation with defaults
+            await automator.generate_audio_overview()
+
+            # Deep dive format
+            await automator.generate_audio_overview(format='deep_dive', length='long')
+
+            # Brief summary
+            await automator.generate_audio_overview(format='brief', length='short')
+
+            # Critique with focus
+            await automator.generate_audio_overview(
+                format='critique',
+                focus_prompt='Analyze strengths and weaknesses of the research methodology'
+            )
+
+            # Multilingual
+            await automator.generate_audio_overview(language='Spanish', length='default')
         """
         try:
             if not self.page:
                 self.logger.error("❌ No browser page available")
-                return False
-            
-            self.logger.info(f"🎙️ Generating Audio Overview: {title}")
-            
-            # Look for Audio Overview button
-            audio_selectors = [
-                'button:has-text("Audio Overview")',
-                'button:has-text("Generate Audio")',
-                'button:has-text("Create Podcast")',
-                '[data-testid="audio-overview"]',
-                '.audio-overview-button'
+                return None
+
+            # Get defaults from config
+            studio_config = self.config.get('STUDIO_SETTINGS', {}).get('audio_overview', {})
+            format = format or studio_config.get('default_format', 'deep_dive')
+            language = language or studio_config.get('default_language', 'English')
+            length = length or studio_config.get('default_length', 'default')
+            generation_timeout = studio_config.get('generation_timeout', 600)
+            polling_interval = studio_config.get('polling_interval', 5)
+
+            # Validate and normalize format
+            format_map = {
+                'deep_dive': 'Deep Dive',
+                'brief': 'Brief',
+                'critique': 'Critique',
+                'debate': 'Debate'
+            }
+            format_normalized = format.lower().replace(' ', '_')
+            if format_normalized not in format_map:
+                self.logger.warning(f"⚠️ Unknown format '{format}', using 'deep_dive'")
+                format_normalized = 'deep_dive'
+            format_display = format_map[format_normalized]
+
+            # Normalize length
+            length_normalized = length.lower()
+            if length_normalized not in ['short', 'default', 'long']:
+                self.logger.warning(f"⚠️ Unknown length '{length}', using 'default'")
+                length_normalized = 'default'
+            length_display = length_normalized.capitalize()
+
+            self.logger.info(f"🎙️ Generating Audio Overview")
+            self.logger.info(f"   Format: {format_display}")
+            self.logger.info(f"   Language: {language}")
+            self.logger.info(f"   Length: {length_display}")
+            if focus_prompt:
+                preview = focus_prompt[:50] + '...' if len(focus_prompt) > 50 else focus_prompt
+                self.logger.info(f"   Focus: {preview}")
+
+            # Navigate to notebook if ID provided
+            if notebook_id:
+                self.logger.info(f"📓 Navigating to notebook: {notebook_id}")
+                await self.navigate_to_notebook(notebook_id)
+
+            # Ensure we're on Sources tab (where Studio panel is located)
+            await self._ensure_sources_tab_active()
+
+            # Step 1: Look for the edit/pencil icon next to Audio Overview in Studio panel
+            # This is the correct entry point for customization
+            self.logger.info("🔍 Looking for Audio Overview customization icon (pencil/edit)...")
+
+            customize_icon_selectors = [
+                # Primary: Edit button on Audio Overview card
+                '.create-artifact-button-container:has-text("Audio Overview") button.edit-button',
+                '.create-artifact-button-container:has-text("Audio Overview") .edit-button-always-visible',
+                '.create-artifact-button-container:has-text("Audio Overview") button[data-edit-button-type="1"]',
+                # Backup: Generic edit button with Audio Overview nearby
+                'button.edit-button:has(mat-icon .edit-button-icon)',
+                '.mat-label-medium:has-text("Audio Overview") button.edit-button',
+                # Fallback: Material icon approach
+                'button:has(mat-icon:has-text("edit"))',
+                'button.edit-button-always-visible',
+                # Last resort: any edit button
+                'button[mat-icon-button]:has(mat-icon:has-text("edit"))'
             ]
-            
-            audio_button = None
-            for selector in audio_selectors:
+
+            customize_button = None
+            for selector in customize_icon_selectors:
                 try:
-                    element = await self.page.wait_for_selector(selector, timeout=10000)
-                    if element:
-                        audio_button = element
+                    # Wait for element to appear (up to 10 seconds)
+                    customize_button = await self.page.wait_for_selector(
+                        selector,
+                        timeout=10000,
+                        state='visible'
+                    )
+                    if customize_button:
+                        self.logger.info(f"✅ Found customize icon: {selector}")
                         break
                 except:
                     continue
-            
-            if not audio_button:
-                self.logger.error("❌ Could not find Audio Overview button")
-                return False
-            
-            # Click to start generation
-            await audio_button.click()
+
+            if not customize_button:
+                # Fallback: Try clicking main Audio Overview button (may trigger quick generation)
+                self.logger.warning("⚠️ Could not find customize icon, trying main Audio Overview button...")
+                studio_button_selectors = [
+                    'button:has-text("Audio Overview")',
+                    '[aria-label*="Audio Overview"]',
+                    '.studio-panel button:has-text("Audio")'
+                ]
+
+                for selector in studio_button_selectors:
+                    try:
+                        element = await self.page.wait_for_selector(selector, timeout=5000)
+                        if element:
+                            is_visible = await element.is_visible()
+                            if is_visible:
+                                customize_button = element
+                                self.logger.info(f"✅ Found Audio Overview button (fallback): {selector}")
+                                break
+                    except:
+                        continue
+
+            if not customize_button:
+                self.logger.error("❌ Could not find Audio Overview customization icon or button")
+                return None
+
+            # Click the customize icon (or fallback button)
+            self.logger.info("🖱️ Clicking Audio Overview customize icon...")
+            await customize_button.click()
+            await self.page.wait_for_timeout(2000)
+
+            # Step 2: Look for customization dialog or Customize button
+            self.logger.info("⏳ Waiting for customization dialog or button...")
+
+            # Check if customization dialog already appeared
+            dialog = None
+            try:
+                dialog = await self.page.wait_for_selector(
+                    '.mat-mdc-dialog-container',
+                    timeout=5000,
+                    state='visible'
+                )
+                if dialog:
+                    self.logger.info("✅ Customization dialog appeared")
+            except:
+                # Dialog didn't appear, look for Customize button
+                self.logger.info("🔍 Looking for Customize button...")
+                customize_selectors = [
+                    'button:has-text("Customize")',
+                    'button:has-text("Customization")',
+                    '[aria-label*="Customize"]'
+                ]
+
+                for selector in customize_selectors:
+                    try:
+                        customize_button = await self.page.wait_for_selector(selector, timeout=5000)
+                        if customize_button:
+                            is_visible = await customize_button.is_visible()
+                            if is_visible:
+                                self.logger.info(f"✅ Found Customize button: {selector}")
+                                await customize_button.click()
+                                await self.page.wait_for_timeout(2000)
+
+                                # Now dialog should appear
+                                dialog = await self.page.wait_for_selector(
+                                    '.mat-mdc-dialog-container',
+                                    timeout=10000,
+                                    state='visible'
+                                )
+                                if dialog:
+                                    self.logger.info("✅ Customization dialog appeared")
+                                break
+                    except:
+                        continue
+
+            if not dialog:
+                self.logger.error("❌ Could not find customization dialog")
+                return None
+
+            # Step 3: Configure format (radio button tile)
+            self.logger.info(f"⚙️ Selecting format: {format_display}")
+            format_selectors = [
+                f'mat-radio-button .tile-label:has-text("{format_display}")',
+                f'mat-radio-button:has-text("{format_display}")',
+                f'[aria-label*="{format_display}"]'
+            ]
+
+            format_tile = None
+            for selector in format_selectors:
+                try:
+                    elements = await dialog.query_selector_all(selector)
+                    for element in elements:
+                        try:
+                            is_visible = await element.is_visible()
+                            if is_visible:
+                                format_tile = element
+                                break
+                        except:
+                            continue
+                    if format_tile:
+                        break
+                except:
+                    continue
+
+            if format_tile:
+                await format_tile.click()
+                await self.page.wait_for_timeout(500)
+                self.logger.info(f"✅ Format selected: {format_display}")
+            else:
+                self.logger.warning(f"⚠️ Could not find format tile for '{format_display}', using default")
+
+            # Step 4: Configure language (dropdown)
+            self.logger.info(f"⚙️ Selecting language: {language}")
+            language_selectors = [
+                'mat-select[role="combobox"]',  # Primary: role-based
+                '.mat-mdc-select',              # Class-based
+                'mat-select',                   # Generic mat-select
+                'mat-select[aria-label*="language"]',  # Fallback
+                'mat-select[aria-label*="Language"]'
+            ]
+
+            language_select = None
+            for selector in language_selectors:
+                try:
+                    # Wait for language selector to appear (up to 5 seconds)
+                    language_select = await dialog.wait_for_selector(
+                        selector,
+                        timeout=5000,
+                        state='visible'
+                    )
+                    if language_select:
+                        break
+                except:
+                    continue
+
+            if language_select:
+                # Click to open dropdown
+                await language_select.click()
+                await self.page.wait_for_timeout(1000)
+
+                # Wait for overlay to appear (language options appear in CDK overlay)
+                try:
+                    await self.page.wait_for_selector('.cdk-overlay-pane', timeout=3000, state='visible')
+                except:
+                    pass
+
+                # Select language option (options appear in overlay, not dialog)
+                language_option_selectors = [
+                    f'.cdk-overlay-pane mat-option:has-text("{language}")',  # In overlay
+                    f'mat-option:has-text("{language}")',  # Generic
+                    f'.mat-mdc-option:has-text("{language}")',  # Class-based
+                    f'[role="option"]:has-text("{language}")'  # Role-based
+                ]
+
+                language_selected = False
+                for selector in language_option_selectors:
+                    try:
+                        option = await self.page.wait_for_selector(selector, timeout=5000, state='visible')
+                        if option:
+                            await option.click()
+                            await self.page.wait_for_timeout(500)
+                            self.logger.info(f"✅ Language selected: {language}")
+                            language_selected = True
+                            break
+                    except:
+                        continue
+
+                if not language_selected:
+                    self.logger.warning(f"⚠️ Could not select language '{language}', using default")
+            else:
+                self.logger.warning("⚠️ Could not find language selector, using default")
+
+            # Step 5: Configure length (toggle button group)
+            self.logger.info(f"⚙️ Selecting length: {length_display}")
+            length_selectors = [
+                f'mat-button-toggle:has-text("{length_display}") button',  # Primary: button inside toggle
+                f'button.mat-button-toggle-button:has-text("{length_display}")',  # Direct button class
+                f'.mat-button-toggle-group button:has-text("{length_display}")',  # Group context
+                f'mat-button-toggle button >> text="{length_display}"',  # Playwright text selector
+                f'button:has(.mat-button-toggle-label-content:has-text("{length_display}"))'  # Via label span
+            ]
+
+            length_button = None
+            for selector in length_selectors:
+                try:
+                    # Wait for button to appear (up to 5 seconds)
+                    length_button = await dialog.wait_for_selector(
+                        selector,
+                        timeout=5000,
+                        state='visible'
+                    )
+                    if length_button:
+                        break
+                except:
+                    continue
+
+            if length_button:
+                await length_button.click()
+                await self.page.wait_for_timeout(500)
+                self.logger.info(f"✅ Length selected: {length_display}")
+            else:
+                self.logger.warning(f"⚠️ Could not find length button for '{length_display}', using default")
+
+            # Step 6: Enter focus prompt if provided
+            if focus_prompt:
+                self.logger.info("⚙️ Entering focus prompt...")
+                focus_selectors = [
+                    'textarea[aria-label*="focus"]',
+                    'textarea[aria-label*="Focus"]',
+                    'textarea[placeholder*="focus"]',
+                    'textarea[placeholder*="Focus"]',
+                    '.focus-prompt textarea'
+                ]
+
+                focus_textarea = None
+                for selector in focus_selectors:
+                    try:
+                        element = await dialog.query_selector(selector)
+                        if element:
+                            is_visible = await element.is_visible()
+                            if is_visible:
+                                focus_textarea = element
+                                break
+                    except:
+                        continue
+
+                if focus_textarea:
+                    # Truncate if too long (5000 char limit)
+                    focus_text = focus_prompt[:5000] if len(focus_prompt) > 5000 else focus_prompt
+                    await focus_textarea.fill(focus_text)
+                    await self.page.wait_for_timeout(500)
+                    self.logger.info(f"✅ Focus prompt entered ({len(focus_text)} chars)")
+                else:
+                    self.logger.warning("⚠️ Could not find focus prompt textarea")
+
+            # Step 7: Click Generate button
+            self.logger.info("🚀 Clicking Generate button...")
+            generate_selectors = [
+                'button:has-text("Generate")',
+                'button .mdc-button__label:has-text("Generate")',
+                'button[aria-label*="Generate"]'
+            ]
+
+            generate_button = None
+            for selector in generate_selectors:
+                try:
+                    element = await dialog.query_selector(selector)
+                    if element:
+                        is_visible = await element.is_visible()
+                        if is_visible:
+                            generate_button = element
+                            break
+                except:
+                    continue
+
+            if not generate_button:
+                self.logger.error("❌ Could not find Generate button")
+                return None
+
+            # Click Generate and wait for dialog to close
+            generation_start_time = time.time()
+            await generate_button.click()
+            await self.page.wait_for_timeout(3000)  # Wait for dialog to close
+
             self.logger.info("🔄 Audio Overview generation started...")
-            
-            # Wait for generation to complete
-            # This timeout should be adjusted based on actual generation time
-            generation_timeout = self.config.get('NOTEBOOKLM_SETTINGS', {}).get('generation_timeout', 300000)
-            await self.page.wait_for_timeout(generation_timeout)
-            
-            self.logger.info("✅ Audio Overview generation completed")
-            return True
-            
+            self.logger.info(f"⏳ Monitoring generation (timeout: {generation_timeout}s)...")
+
+            # Step 8: Monitor generation status
+            # NotebookLM generates in background, shows status in Studio panel
+            artifact_data = await self._monitor_audio_generation(
+                generation_start_time,
+                generation_timeout,
+                polling_interval
+            )
+
+            if artifact_data:
+                # Add our configuration to the metadata
+                artifact_data['format'] = format_normalized
+                artifact_data['language'] = language
+                artifact_data['length'] = length_normalized
+                artifact_data['focus_prompt'] = focus_prompt if focus_prompt else None
+
+                self.logger.info("✅ Audio Overview generated successfully!")
+                self.logger.info(f"📋 Artifact ID: {artifact_data.get('artifact_id', 'unknown')}")
+                self.logger.info(f"⏱️ Generation time: {artifact_data.get('generation_time', 0)}s")
+
+                # Track artifact in session if notebook_id is available
+                # 🌸 Miette: Recording the voice we created
+                if notebook_id and self.session_tracker:
+                    try:
+                        success = self.session_tracker.add_artifact_to_notebook(
+                            notebook_id,
+                            artifact_data
+                        )
+                        if success:
+                            self.logger.info(f"📝 Artifact tracked in session for notebook {notebook_id}")
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Could not track artifact in session: {e}")
+
+                return artifact_data
+            else:
+                self.logger.error("❌ Audio Overview generation failed or timed out")
+                return None
+
         except Exception as e:
             self.logger.error(f"❌ Failed to generate Audio Overview: {e}")
-            return False
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return None
+
+    async def _monitor_audio_generation(
+        self,
+        start_time: float,
+        timeout: int,
+        polling_interval: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Monitor Audio Overview generation status.
+
+        🔥 West (Action): Patient watching for creation to complete.
+
+        Args:
+            start_time (float): When generation started (time.time())
+            timeout (int): Maximum wait time in seconds
+            polling_interval (int): How often to check status (seconds)
+
+        Returns:
+            Optional[Dict[str, Any]]: Artifact metadata if completed, None if timeout/error
+        """
+        try:
+            last_log_time = start_time
+
+            while time.time() - start_time < timeout:
+                elapsed = int(time.time() - start_time)
+
+                # Log progress every 30 seconds
+                if time.time() - last_log_time >= 30:
+                    self.logger.info(f"⏳ Still generating... ({elapsed}s elapsed)")
+                    last_log_time = time.time()
+
+                # Look for completed artifact in Studio panel
+                # Completion indicated by "Load" button appearing
+                artifact_selectors = [
+                    '.studio-artifact:has(button:has-text("Load"))',
+                    '[data-artifact-type="audio_overview"]:has(button:has-text("Load"))',
+                    '.artifact-card:has(button:has-text("Load"))'
+                ]
+
+                for selector in artifact_selectors:
+                    try:
+                        artifact_element = await self.page.query_selector(selector)
+                        if artifact_element:
+                            is_visible = await artifact_element.is_visible()
+                            if is_visible:
+                                # Found completed artifact!
+                                generation_time = int(time.time() - start_time)
+                                self.logger.info(f"✅ Generation completed in {generation_time}s")
+
+                                # Extract metadata
+                                artifact_data = await self._extract_artifact_metadata(artifact_element)
+                                artifact_data['generation_time'] = generation_time
+                                artifact_data['status'] = 'completed'
+                                artifact_data['type'] = 'audio_overview'
+
+                                return artifact_data
+                    except:
+                        continue
+
+                # Wait before polling again
+                await self.page.wait_for_timeout(polling_interval * 1000)
+
+            # Timeout reached
+            elapsed = int(time.time() - start_time)
+            self.logger.error(f"❌ Generation timeout after {elapsed}s")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"❌ Error monitoring generation: {e}")
+            return None
+
+    async def _extract_artifact_metadata(self, artifact_element) -> Dict[str, Any]:
+        """
+        Extract metadata from a completed artifact element.
+
+        Args:
+            artifact_element: Playwright element handle for artifact
+
+        Returns:
+            Dict[str, Any]: Artifact metadata
+        """
+        try:
+            # Try to extract artifact ID from element attributes
+            artifact_id = None
+            for attr in ['data-artifact-id', 'data-id', 'id']:
+                try:
+                    artifact_id = await artifact_element.get_attribute(attr)
+                    if artifact_id:
+                        break
+                except:
+                    continue
+
+            # If no ID attribute, generate one
+            if not artifact_id:
+                import hashlib
+                timestamp = datetime.now().isoformat()
+                artifact_id = hashlib.md5(timestamp.encode()).hexdigest()[:12]
+
+            # Extract timestamp if available
+            created_at = datetime.now().isoformat()
+            try:
+                timestamp_element = await artifact_element.query_selector('.timestamp, .created-at, [data-timestamp]')
+                if timestamp_element:
+                    timestamp_text = await timestamp_element.inner_text()
+                    if timestamp_text:
+                        created_at = timestamp_text
+            except:
+                pass
+
+            return {
+                'artifact_id': artifact_id,
+                'created_at': created_at
+            }
+
+        except Exception as e:
+            self.logger.warning(f"⚠️ Could not extract full metadata: {e}")
+            # Return minimal metadata
+            import hashlib
+            timestamp = datetime.now().isoformat()
+            return {
+                'artifact_id': hashlib.md5(timestamp.encode()).hexdigest()[:12],
+                'created_at': timestamp
+            }
+
+    async def _ensure_sources_tab_active(self):
+        """
+        Ensure the Sources tab is active (where Studio panel is located).
+
+        Helper method used by Studio artifact generation.
+        """
+        try:
+            sources_tab_selectors = [
+                'button[role="tab"]:has-text("Sources")',
+                '[role="tab"][aria-label*="Sources"]',
+                '.tab-button:has-text("Sources")'
+            ]
+
+            for selector in sources_tab_selectors:
+                try:
+                    sources_tab = await self.page.wait_for_selector(selector, timeout=5000)
+                    if sources_tab:
+                        is_active = await sources_tab.get_attribute('aria-selected')
+                        if is_active != 'true':
+                            self.logger.info("📑 Switching to Sources tab...")
+                            await sources_tab.click()
+                            await self.page.wait_for_timeout(1000)
+                        return
+                except:
+                    continue
+
+        except Exception as e:
+            self.logger.warning(f"⚠️ Could not ensure Sources tab: {e}")
     
     async def download_audio(self, output_path: str) -> bool:
         """

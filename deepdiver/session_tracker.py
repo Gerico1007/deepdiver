@@ -510,6 +510,97 @@ class SessionTracker:
             self.logger.error(f"❌ Error listing notebook sources: {e}")
             return []
 
+    def add_artifact_to_notebook(self, notebook_id: str, artifact_data: Dict[str, Any]) -> bool:
+        """
+        Add a Studio artifact (Audio Overview, Video, Mind Map) to a notebook.
+
+        🌸 Miette: This tracks the voices we create through Studio.
+
+        Args:
+            notebook_id (str): ID of the notebook to add artifact to
+            artifact_data (Dict[str, Any]): Artifact metadata
+                Expected fields:
+                - type: 'audio_overview', 'video_overview', 'mind_map', etc.
+                - format: 'deep_dive', 'brief', 'critique', 'debate' (for audio)
+                - language: 'English', 'Spanish', etc.
+                - length: 'short', 'default', 'long' (for audio)
+                - focus_prompt: Optional custom AI host instructions
+                - artifact_id: Unique artifact identifier
+                - status: 'completed', 'failed', etc.
+                - created_at: ISO timestamp
+                - generation_time: Time taken to generate (seconds)
+
+        Returns:
+            bool: True if add successful, False otherwise
+        """
+        try:
+            if not self.current_session:
+                self.logger.warning("No active session")
+                return False
+
+            # Find the notebook
+            notebook = self.get_notebook_by_id(notebook_id)
+            if not notebook:
+                self.logger.warning(f"Notebook {notebook_id} not found")
+                return False
+
+            # Ensure artifacts list exists
+            if 'artifacts' not in notebook:
+                notebook['artifacts'] = []
+
+            # Add timestamp if not present
+            if 'created_at' not in artifact_data:
+                artifact_data['created_at'] = datetime.now().isoformat()
+
+            # Generate artifact_id if not present
+            if 'artifact_id' not in artifact_data:
+                import hashlib
+                artifact_type = artifact_data.get('type', 'unknown')
+                timestamp = datetime.now().isoformat()
+                artifact_id = hashlib.md5(f"{artifact_type}{timestamp}".encode()).hexdigest()[:12]
+                artifact_data['artifact_id'] = artifact_id
+
+            # Add artifact to notebook
+            notebook['artifacts'].append(artifact_data)
+
+            # Update notebook in session
+            self.update_notebook(notebook_id, {'artifacts': notebook['artifacts']})
+
+            artifact_type = artifact_data.get('type', 'Unknown')
+            artifact_format = artifact_data.get('format', '')
+            if artifact_format:
+                artifact_name = f"{artifact_type} ({artifact_format})"
+            else:
+                artifact_name = artifact_type
+
+            self.logger.info(f"✅ Artifact added to notebook {notebook_id}: {artifact_name}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to add artifact to notebook: {e}")
+            return False
+
+    def list_notebook_artifacts(self, notebook_id: str) -> List[Dict[str, Any]]:
+        """
+        List all Studio artifacts for a notebook.
+
+        Args:
+            notebook_id (str): ID of the notebook
+
+        Returns:
+            List[Dict[str, Any]]: List of artifact data
+        """
+        try:
+            notebook = self.get_notebook_by_id(notebook_id)
+            if not notebook:
+                return []
+
+            return notebook.get('artifacts', [])
+
+        except Exception as e:
+            self.logger.error(f"❌ Error listing notebook artifacts: {e}")
+            return []
+
     def get_session_status(self) -> Optional[Dict[str, Any]]:
         """
         Get the current session status.
