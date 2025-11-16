@@ -24,6 +24,78 @@ from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 
 
 # ═══════════════════════════════════════════════════════════════
+# CONFIG FILE DISCOVERY
+# ♠️ Nyro: Multi-location config discovery for flexible deployment
+# ═══════════════════════════════════════════════════════════════
+
+def find_config_file(config_path: str = None) -> Optional[str]:
+    """
+    Find the DeepDiver configuration file by checking multiple locations.
+
+    Priority order:
+    1. Explicit path provided (if given)
+    2. Current working directory: ./deepdiver/deepdiver.yaml
+    3. User config directory: ~/.config/deepdiver/config.yaml
+    4. User home directory: ~/deepdiver/deepdiver.yaml
+    5. Package installation directory
+    6. Return None (system will use defaults)
+
+    Args:
+        config_path: Optional explicit path to config file
+
+    Returns:
+        Path to config file if found, None otherwise
+
+    Examples:
+        >>> find_config_file()  # Auto-discover
+        '/home/user/.config/deepdiver/config.yaml'
+
+        >>> find_config_file('/custom/path.yaml')  # Explicit path
+        '/custom/path.yaml'
+    """
+    search_paths = []
+
+    # 1. Explicit path (if provided and exists)
+    if config_path:
+        if os.path.exists(config_path):
+            return config_path
+        # If explicit path doesn't exist, still add to search list for error reporting
+        search_paths.append(config_path)
+
+    # 2. Current working directory
+    search_paths.append("deepdiver/deepdiver.yaml")
+    search_paths.append("./deepdiver/deepdiver.yaml")
+
+    # 3. User config directory (XDG Base Directory specification)
+    config_dir = os.path.expanduser("~/.config/deepdiver")
+    search_paths.append(os.path.join(config_dir, "config.yaml"))
+    search_paths.append(os.path.join(config_dir, "deepdiver.yaml"))
+
+    # 4. User home directory
+    home_dir = os.path.expanduser("~")
+    search_paths.append(os.path.join(home_dir, "deepdiver", "deepdiver.yaml"))
+    search_paths.append(os.path.join(home_dir, ".deepdiver.yaml"))
+
+    # 5. Package installation directory
+    try:
+        # Get the directory where this module is installed
+        module_dir = os.path.dirname(os.path.abspath(__file__))
+        search_paths.append(os.path.join(module_dir, "deepdiver.yaml"))
+        search_paths.append(os.path.join(module_dir, "..", "deepdiver", "deepdiver.yaml"))
+    except:
+        pass
+
+    # Search all paths
+    for path in search_paths:
+        expanded_path = os.path.expanduser(path)
+        if os.path.exists(expanded_path) and os.path.isfile(expanded_path):
+            return expanded_path
+
+    # No config file found
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════
 # CDP URL RESOLUTION - Chrome DevTools Protocol
 # ♠️ Nyro: Three-tier priority chain for multi-network support
 # ═══════════════════════════════════════════════════════════════
@@ -69,10 +141,11 @@ def get_cdp_url(override: str = None, config_path: str = "deepdiver/deepdiver.ya
     if env_cdp:
         return env_cdp
 
-    # Priority 3: Config file
-    if os.path.exists(config_path):
+    # Priority 3: Config file (with smart discovery)
+    found_config = find_config_file(config_path)
+    if found_config:
         try:
-            with open(config_path, 'r') as f:
+            with open(found_config, 'r') as f:
                 config = yaml.safe_load(f)
                 if config and 'BROWSER_SETTINGS' in config:
                     cdp_url = config['BROWSER_SETTINGS'].get('cdp_url')
@@ -204,15 +277,23 @@ class NotebookLMAutomator:
         self.logger.info(f"🔗 CDP URL: {self.cdp_url}")
     
     def _load_config(self, config_path: str) -> Dict[str, Any]:
-        """Load configuration from YAML file."""
-        try:
-            with open(config_path, 'r') as f:
-                return yaml.safe_load(f)
-        except FileNotFoundError:
-            self.logger.warning(f"Configuration file {config_path} not found, using defaults")
-            return {}
-        except yaml.YAMLError as e:
-            self.logger.error(f"Error parsing configuration: {e}")
+        """Load configuration from YAML file with smart discovery."""
+        # Try to find config file in multiple locations
+        found_config = find_config_file(config_path)
+
+        if found_config:
+            try:
+                with open(found_config, 'r') as f:
+                    config = yaml.safe_load(f)
+                    self.logger.info(f"✅ Loaded configuration from: {found_config}")
+                    return config if config else {}
+            except yaml.YAMLError as e:
+                self.logger.error(f"Error parsing configuration: {e}")
+                return {}
+        else:
+            # No config file found - use defaults
+            self.logger.info("📝 No configuration file found, using defaults")
+            self.logger.info("💡 To create a config file, run: deepdiver init")
             return {}
     
     def _setup_logging(self) -> logging.Logger:

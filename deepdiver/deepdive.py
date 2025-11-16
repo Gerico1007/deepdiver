@@ -10,6 +10,7 @@ Assembly Team: Jerry ⚡, Nyro ♠️, Aureon 🌿, JamAI 🎸, Synth 🧵
 
 import asyncio
 import os
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -25,7 +26,8 @@ from .notebooklm_automator import (
     find_chrome_executable,
     check_chrome_cdp_running,
     launch_chrome_cdp,
-    get_cdp_url
+    get_cdp_url,
+    find_config_file
 )
 
 
@@ -60,13 +62,14 @@ def cli():
 
 
 @cli.command()
-@click.option('--config', '-c', default='deepdiver/deepdiver.yaml',
-              help='Path to configuration file')
+@click.option('--config', '-c', default=None,
+              help='Path to configuration file (default: ~/.config/deepdiver/config.yaml)')
 def init(config: str):
     """
     Initialize DeepDiver configuration and setup.
 
     This command:
+    - Creates configuration file if needed
     - Validates configuration file
     - Checks Chrome CDP status
     - Offers to launch Chrome automatically
@@ -76,11 +79,77 @@ def init(config: str):
     console.print()
 
     try:
-        # Check if config file exists
+        # Determine config file location
+        if config is None:
+            # Default to user config directory
+            config_dir = os.path.expanduser("~/.config/deepdiver")
+            config = os.path.join(config_dir, "config.yaml")
+            console.print(f"📂 Using default config location: {config}", style="cyan")
+
+        # Check if config file exists, create if not
         if not os.path.exists(config):
-            console.print(f"❌ Configuration file not found: {config}", style="red")
-            console.print("Please ensure deepdiver.yaml exists in the project directory.", style="yellow")
-            return
+            console.print(f"📝 Configuration file not found: {config}", style="yellow")
+            console.print("🔧 Creating new configuration file...", style="cyan")
+
+            # Create directory if it doesn't exist
+            config_dir = os.path.dirname(config)
+            if config_dir and not os.path.exists(config_dir):
+                os.makedirs(config_dir, exist_ok=True)
+                console.print(f"📁 Created directory: {config_dir}", style="green")
+
+            # Look for template in package directory
+            module_dir = os.path.dirname(os.path.abspath(__file__))
+            template_paths = [
+                os.path.join(module_dir, "deepdiver.yaml"),
+                os.path.join(os.path.dirname(module_dir), "deepdiver", "deepdiver.yaml"),
+            ]
+
+            template_config = None
+            for template_path in template_paths:
+                if os.path.exists(template_path):
+                    template_config = template_path
+                    break
+
+            if template_config:
+                # Copy template to config location
+                shutil.copy(template_config, config)
+                console.print(f"✅ Created configuration file from template", style="green")
+                console.print(f"   Location: {config}", style="dim")
+            else:
+                # Create basic default config
+                default_config = """# DeepDiver Configuration
+# NotebookLM Podcast Automation System
+
+BASE_PATH: ./output
+
+# Browser automation settings
+BROWSER_SETTINGS:
+  headless: false
+  cdp_url: http://localhost:9222
+  user_data_dir: /tmp/chrome-deepdiver
+  timeout: 60
+
+# Session tracking configuration
+SESSION_TRACKING:
+  enabled: true
+  metadata_format: yaml
+  session_dir: ./sessions
+
+# NotebookLM specific settings
+NOTEBOOKLM_SETTINGS:
+  base_url: https://notebooklm.google.com
+  upload_timeout: 120
+  generation_timeout: 300
+"""
+                with open(config, 'w') as f:
+                    f.write(default_config)
+                console.print(f"✅ Created basic configuration file", style="green")
+                console.print(f"   Location: {config}", style="dim")
+
+            console.print()
+        else:
+            console.print(f"✅ Configuration file found: {config}", style="green")
+            console.print()
 
         # Test configuration loading
         automator = NotebookLMAutomator(config)

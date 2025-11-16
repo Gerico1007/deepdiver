@@ -85,6 +85,44 @@ deepdiver session status
 
 ---
 
+## ⚙️ Configuration
+
+DeepDiver uses **smart configuration file discovery** - it automatically searches multiple locations so you can run commands from anywhere!
+
+### Configuration File Locations
+
+DeepDiver searches for config files in this priority order:
+
+1. **Explicit path** (when using `--config` flag)
+2. **Current directory**: `./deepdiver/deepdiver.yaml`
+3. **User config directory**: `~/.config/deepdiver/config.yaml` ⭐ **Recommended**
+4. **Home directory**: `~/deepdiver/deepdiver.yaml`
+5. **Package directory**: Where DeepDiver is installed
+6. **Built-in defaults**: If no config file is found
+
+### Creating Your Configuration
+
+The easiest way to set up your configuration:
+
+```bash
+# Creates ~/.config/deepdiver/config.yaml with default settings
+deepdiver init
+
+# Or specify a custom location
+deepdiver init --config /path/to/my/config.yaml
+```
+
+### Benefits of Smart Config Discovery
+
+- ✅ **Run from anywhere**: No need to be in a specific directory
+- ✅ **Cross-device consistency**: Config stored in standard location
+- ✅ **Easy updates**: Edit one file that works everywhere
+- ✅ **No setup needed**: Falls back to sensible defaults
+
+For detailed configuration options and troubleshooting, see [CONFIGURATION.md](CONFIGURATION.md).
+
+---
+
 ## 🎮 Usage
 
 ### Session Commands
