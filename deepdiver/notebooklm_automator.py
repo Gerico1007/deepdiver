@@ -1205,7 +1205,9 @@ class NotebookLMAutomator:
                 self.logger.warning(f"⚠️ Could not find format tile for '{format_display}', using default")
 
             # Step 4: Configure language (dropdown)
-            self.logger.info(f"⚙️ Selecting language: {language}")
+            # Capitalize language for proper matching (e.g., "french" -> "French")
+            language_capitalized = language.capitalize()
+            self.logger.info(f"⚙️ Selecting language: {language_capitalized}")
             language_selectors = [
                 'mat-select[role="combobox"]',  # Primary: role-based
                 '.mat-mdc-select',              # Class-based
@@ -1241,10 +1243,10 @@ class NotebookLMAutomator:
 
                 # Select language option (options appear in overlay, not dialog)
                 language_option_selectors = [
-                    f'.cdk-overlay-pane mat-option:has-text("{language}")',  # In overlay
-                    f'mat-option:has-text("{language}")',  # Generic
-                    f'.mat-mdc-option:has-text("{language}")',  # Class-based
-                    f'[role="option"]:has-text("{language}")'  # Role-based
+                    f'.cdk-overlay-pane mat-option:has-text("{language_capitalized}")',  # In overlay
+                    f'mat-option:has-text("{language_capitalized}")',  # Generic
+                    f'.mat-mdc-option:has-text("{language_capitalized}")',  # Class-based
+                    f'[role="option"]:has-text("{language_capitalized}")'  # Role-based
                 ]
 
                 language_selected = False
@@ -1254,14 +1256,17 @@ class NotebookLMAutomator:
                         if option:
                             await option.click()
                             await self.page.wait_for_timeout(500)
-                            self.logger.info(f"✅ Language selected: {language}")
+                            self.logger.info(f"✅ Language selected: {language_capitalized}")
                             language_selected = True
                             break
                     except:
                         continue
 
                 if not language_selected:
-                    self.logger.warning(f"⚠️ Could not select language '{language}', using default")
+                    # Close the overlay by pressing Escape to prevent it blocking other clicks
+                    self.logger.warning(f"⚠️ Could not select language '{language_capitalized}', using default")
+                    await self.page.keyboard.press('Escape')
+                    await self.page.wait_for_timeout(500)
             else:
                 self.logger.warning("⚠️ Could not find language selector, using default")
 
