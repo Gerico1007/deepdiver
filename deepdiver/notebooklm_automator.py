@@ -1205,11 +1205,11 @@ class NotebookLMAutomator:
                 self.logger.warning(f"⚠️ Could not find format tile for '{format_display}', using default")
 
             # Step 4: Configure language (dropdown)
-            # Map language inputs to NotebookLM display text
+            # Map language inputs to NotebookLM display text (with regional variants)
             language_map = {
                 'english': 'English',
                 'spanish': 'español',
-                'french': 'français',
+                'french': 'français (Canada)',  # Use Canadian French variant
                 'german': 'Deutsch',
                 'portuguese': 'português',
                 'italian': 'italiano',
