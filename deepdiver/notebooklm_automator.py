@@ -1205,9 +1205,31 @@ class NotebookLMAutomator:
                 self.logger.warning(f"⚠️ Could not find format tile for '{format_display}', using default")
 
             # Step 4: Configure language (dropdown)
-            # Capitalize language for proper matching (e.g., "french" -> "French")
-            language_capitalized = language.capitalize()
-            self.logger.info(f"⚙️ Selecting language: {language_capitalized}")
+            # Map language inputs to NotebookLM display text
+            language_map = {
+                'english': 'English',
+                'spanish': 'español',
+                'french': 'français',
+                'german': 'Deutsch',
+                'portuguese': 'português',
+                'italian': 'italiano',
+                'japanese': '日本語',
+                'korean': '한국어',
+                'chinese': '中文',
+                'hindi': 'हिन्दी',
+                'arabic': 'العربية',
+                'russian': 'русский',
+                'danish': 'dansk',
+                'dutch': 'Nederlands',
+                'finnish': 'suomi',
+                'czech': 'čeština'
+            }
+
+            # Get the display language name
+            language_lower = language.lower()
+            language_display = language_map.get(language_lower, language.capitalize())
+
+            self.logger.info(f"⚙️ Selecting language: {language_display} (input: {language})")
             language_selectors = [
                 'mat-select[role="combobox"]',  # Primary: role-based
                 '.mat-mdc-select',              # Class-based
@@ -1240,37 +1262,39 @@ class NotebookLMAutomator:
 
                 language_selected = False
 
-                # Try Playwright's get_by_role first (most reliable for Material dropdowns)
+                # Try matching the primary text span (most specific)
                 try:
-                    option = self.page.get_by_role('option', name=language_capitalized, exact=True)
+                    option = self.page.locator(f'mat-option .mdc-list-item__primary-text:has-text("{language_display}")')
                     if await option.count() > 0:
-                        await option.click()
+                        # Click the parent mat-option element
+                        parent = option.locator('xpath=ancestor::mat-option').first
+                        await parent.click()
                         await self.page.wait_for_timeout(500)
-                        self.logger.info(f"✅ Language selected: {language_capitalized} (via role)")
+                        self.logger.info(f"✅ Language selected: {language_display} (via primary-text)")
                         language_selected = True
                 except Exception as e:
-                    self.logger.debug(f"get_by_role failed: {e}")
+                    self.logger.debug(f"primary-text selector failed: {e}")
 
-                # Fallback: Try case-insensitive role match
+                # Fallback: Try Playwright's get_by_role with exact match
                 if not language_selected:
                     try:
-                        option = self.page.get_by_role('option', name=language_capitalized)
+                        option = self.page.get_by_role('option', name=language_display, exact=False)
                         if await option.count() > 0:
                             await option.first.click()
                             await self.page.wait_for_timeout(500)
-                            self.logger.info(f"✅ Language selected: {language_capitalized} (via role fuzzy)")
+                            self.logger.info(f"✅ Language selected: {language_display} (via role)")
                             language_selected = True
                     except Exception as e:
-                        self.logger.debug(f"get_by_role fuzzy failed: {e}")
+                        self.logger.debug(f"get_by_role failed: {e}")
 
-                # Fallback: Try locator with text
+                # Fallback: Try locator with text (partial match)
                 if not language_selected:
                     try:
-                        option = self.page.locator(f'mat-option:has-text("{language_capitalized}")')
+                        option = self.page.locator(f'mat-option:has-text("{language_display}")')
                         if await option.count() > 0:
                             await option.first.click()
                             await self.page.wait_for_timeout(500)
-                            self.logger.info(f"✅ Language selected: {language_capitalized} (via locator)")
+                            self.logger.info(f"✅ Language selected: {language_display} (via locator)")
                             language_selected = True
                     except Exception as e:
                         self.logger.debug(f"locator failed: {e}")
@@ -1278,10 +1302,10 @@ class NotebookLMAutomator:
                 # Fallback: Try CSS selectors
                 if not language_selected:
                     language_option_selectors = [
-                        f'.cdk-overlay-pane mat-option:has-text("{language_capitalized}")',
-                        f'mat-option:has-text("{language_capitalized}")',
-                        f'.mat-mdc-option:has-text("{language_capitalized}")',
-                        f'[role="option"]:has-text("{language_capitalized}")'
+                        f'.cdk-overlay-pane mat-option:has-text("{language_display}")',
+                        f'mat-option:has-text("{language_display}")',
+                        f'.mat-mdc-option:has-text("{language_display}")',
+                        f'[role="option"]:has-text("{language_display}")'
                     ]
 
                     for selector in language_option_selectors:
@@ -1290,7 +1314,7 @@ class NotebookLMAutomator:
                             if option:
                                 await option.click()
                                 await self.page.wait_for_timeout(500)
-                                self.logger.info(f"✅ Language selected: {language_capitalized} (via selector)")
+                                self.logger.info(f"✅ Language selected: {language_display} (via selector)")
                                 language_selected = True
                                 break
                         except:
@@ -1298,7 +1322,7 @@ class NotebookLMAutomator:
 
                 if not language_selected:
                     # Close the overlay by pressing Escape to prevent it blocking other clicks
-                    self.logger.warning(f"⚠️ Could not select language '{language_capitalized}', using default")
+                    self.logger.warning(f"⚠️ Could not select language '{language_display}', using default")
                     await self.page.keyboard.press('Escape')
                     await self.page.wait_for_timeout(500)
             else:
