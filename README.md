@@ -474,6 +474,29 @@ This project follows the G.Music Assembly framework:
 
 ---
 
+## 📚 Documentation
+
+### Core Documentation
+- **[CONFIGURATION.md](CONFIGURATION.md)** - Configuration file discovery and setup guide
+- **[ROADMAP.md](ROADMAP.md)** - Project development roadmap and milestones
+- **[CLAUDE.md](CLAUDE.md)** - Assembly team configuration and workflow
+
+### Implementation Guides
+- **[NotebookLM Studio Artifacts](docs/NOTEBOOKLM_STUDIO_ARTIFACTS.md)** - Complete implementation guide for all Studio artifact types:
+  - ✅ Phase 1: Audio Overview (Completed)
+  - 📋 Phase 2: Video Overview (Next Priority)
+  - 📋 Phase 3: Mind Map
+  - 📋 Phase 4: Study Guides & Reports
+  - 📋 Phase 5: Flashcards
+  - 📋 Phase 6: Quizzes
+
+### Getting Started
+- Run `deepdiver init` to set up configuration
+- See [Quick Start](#-quick-start) section above
+- Check [Configuration](#%EF%B8%8F-configuration) for advanced setup
+
+---
+
 ## 📞 Support
 
 **For issues**:
