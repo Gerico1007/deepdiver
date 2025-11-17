@@ -1236,31 +1236,65 @@ class NotebookLMAutomator:
                 await self.page.wait_for_timeout(1000)
 
                 # Wait for overlay to appear (language options appear in CDK overlay)
-                try:
-                    await self.page.wait_for_selector('.cdk-overlay-pane', timeout=3000, state='visible')
-                except:
-                    pass
-
-                # Select language option (options appear in overlay, not dialog)
-                language_option_selectors = [
-                    f'.cdk-overlay-pane mat-option:has-text("{language_capitalized}")',  # In overlay
-                    f'mat-option:has-text("{language_capitalized}")',  # Generic
-                    f'.mat-mdc-option:has-text("{language_capitalized}")',  # Class-based
-                    f'[role="option"]:has-text("{language_capitalized}")'  # Role-based
-                ]
+                await self.page.wait_for_timeout(1500)  # Give overlay time to fully render
 
                 language_selected = False
-                for selector in language_option_selectors:
+
+                # Try Playwright's get_by_role first (most reliable for Material dropdowns)
+                try:
+                    option = self.page.get_by_role('option', name=language_capitalized, exact=True)
+                    if await option.count() > 0:
+                        await option.click()
+                        await self.page.wait_for_timeout(500)
+                        self.logger.info(f"✅ Language selected: {language_capitalized} (via role)")
+                        language_selected = True
+                except Exception as e:
+                    self.logger.debug(f"get_by_role failed: {e}")
+
+                # Fallback: Try case-insensitive role match
+                if not language_selected:
                     try:
-                        option = await self.page.wait_for_selector(selector, timeout=5000, state='visible')
-                        if option:
-                            await option.click()
+                        option = self.page.get_by_role('option', name=language_capitalized)
+                        if await option.count() > 0:
+                            await option.first.click()
                             await self.page.wait_for_timeout(500)
-                            self.logger.info(f"✅ Language selected: {language_capitalized}")
+                            self.logger.info(f"✅ Language selected: {language_capitalized} (via role fuzzy)")
                             language_selected = True
-                            break
-                    except:
-                        continue
+                    except Exception as e:
+                        self.logger.debug(f"get_by_role fuzzy failed: {e}")
+
+                # Fallback: Try locator with text
+                if not language_selected:
+                    try:
+                        option = self.page.locator(f'mat-option:has-text("{language_capitalized}")')
+                        if await option.count() > 0:
+                            await option.first.click()
+                            await self.page.wait_for_timeout(500)
+                            self.logger.info(f"✅ Language selected: {language_capitalized} (via locator)")
+                            language_selected = True
+                    except Exception as e:
+                        self.logger.debug(f"locator failed: {e}")
+
+                # Fallback: Try CSS selectors
+                if not language_selected:
+                    language_option_selectors = [
+                        f'.cdk-overlay-pane mat-option:has-text("{language_capitalized}")',
+                        f'mat-option:has-text("{language_capitalized}")',
+                        f'.mat-mdc-option:has-text("{language_capitalized}")',
+                        f'[role="option"]:has-text("{language_capitalized}")'
+                    ]
+
+                    for selector in language_option_selectors:
+                        try:
+                            option = await self.page.wait_for_selector(selector, timeout=3000, state='visible')
+                            if option:
+                                await option.click()
+                                await self.page.wait_for_timeout(500)
+                                self.logger.info(f"✅ Language selected: {language_capitalized} (via selector)")
+                                language_selected = True
+                                break
+                        except:
+                            continue
 
                 if not language_selected:
                     # Close the overlay by pressing Escape to prevent it blocking other clicks
