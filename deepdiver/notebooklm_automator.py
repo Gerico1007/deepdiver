@@ -1953,11 +1953,20 @@ class NotebookLMAutomator:
 
             # Find email input field
             email_input_selectors = [
+                'mat-dialog-container input#mat-input-1',
+                'mat-dialog-container input[peoplekitautocomplete]',
                 'input[type="email"]',
                 'input[aria-label*="email"]',
                 'input[aria-label*="Add people"]',
+                'input[aria-label*="people and groups"]',
                 'input[placeholder*="email"]',
-                'input.share-email-input'
+                'input.share-email-input',
+                'mat-dialog-container input',
+                'div[role="dialog"] input',
+                'div[role="dialog"] [role="combobox"]',
+                'div[role="dialog"] [contenteditable="true"]',
+                'label:has-text("Add people and groups") + div input',
+                'label:has-text("Add people and groups") + div [role="combobox"]'
             ]
 
             email_input = None
@@ -1983,6 +1992,13 @@ class NotebookLMAutomator:
             await asyncio.sleep(0.5)
             await self.page.keyboard.type(email, delay=50)
             await asyncio.sleep(1)
+
+            # Google share dialogs often need Enter to convert typed text into a recipient chip.
+            try:
+                await self.page.keyboard.press('Enter')
+                await asyncio.sleep(1)
+            except:
+                pass
 
             # Select role if dropdown available
             if role != 'editor':
@@ -2022,6 +2038,7 @@ class NotebookLMAutomator:
             send_button_selectors = [
                 'button:has-text("Send")',
                 'button:has-text("Share")',
+                'button:has-text("Save")',
                 'button:has-text("Invite")',
                 'button[aria-label="Send"]',
                 'button[type="submit"]'
