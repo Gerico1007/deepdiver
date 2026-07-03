@@ -1880,6 +1880,39 @@ class NotebookLMAutomator:
                 self.logger.info(f"📸 Screenshot saved to {screenshot_path}")
             return False
 
+    async def _dismiss_preexisting_dialogs(self) -> bool:
+        """Dismiss blocking NotebookLM overlays before clicking page-level controls."""
+        if not self.page:
+            return False
+
+        overlay_selectors = [
+            '.cdk-overlay-backdrop',
+            '.cdk-overlay-pane',
+            'div[role="dialog"]',
+        ]
+
+        overlay_visible = False
+        for selector in overlay_selectors:
+            try:
+                element = await self.page.query_selector(selector)
+                if element and await element.is_visible():
+                    overlay_visible = True
+                    self.logger.info(f"⚠️ Dismissing blocking overlay before share: {selector}")
+                    break
+            except:
+                continue
+
+        if not overlay_visible:
+            return False
+
+        try:
+            await self.page.keyboard.press('Escape')
+            await self.page.wait_for_timeout(500)
+            return True
+        except Exception as e:
+            self.logger.warning(f"⚠️ Failed to dismiss overlay with Escape: {e}")
+            return False
+
     async def share_notebook(self, email: str, role: str = 'editor') -> bool:
         """
         Share the current notebook with a collaborator via email.
@@ -1897,6 +1930,7 @@ class NotebookLMAutomator:
                 return False
 
             self.logger.info(f"👥 Sharing notebook with {email} as {role}...")
+            await self._dismiss_preexisting_dialogs()
 
             # Multi-selector strategy for share button
             share_button_selectors = [
