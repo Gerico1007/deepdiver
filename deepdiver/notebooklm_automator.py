@@ -1913,6 +1913,29 @@ class NotebookLMAutomator:
             self.logger.warning(f"⚠️ Failed to dismiss overlay with Escape: {e}")
             return False
 
+    async def _dismiss_nested_overlay_backdrop(self) -> bool:
+        """Dismiss transient Angular/Material backdrops without closing the main share dialog."""
+        if not self.page:
+            return False
+
+        backdrop_selectors = [
+            '.cdk-overlay-backdrop.cdk-overlay-backdrop-showing',
+            '.cdk-overlay-backdrop',
+        ]
+
+        for selector in backdrop_selectors:
+            try:
+                element = await self.page.query_selector(selector)
+                if element and await element.is_visible():
+                    self.logger.info(f"⚠️ Dismissing nested share overlay backdrop: {selector}")
+                    await self.page.keyboard.press('Escape')
+                    await self.page.wait_for_timeout(500)
+                    return True
+            except Exception:
+                continue
+
+        return False
+
     async def share_notebook(self, email: str, role: str = 'editor') -> bool:
         """
         Share the current notebook with a collaborator via email.
@@ -2070,9 +2093,20 @@ class NotebookLMAutomator:
 
             # Send/Submit invitation
             send_button_selectors = [
-                'button:has-text("Send")',
-                'button:has-text("Share")',
+                'mat-dialog-container button:has-text("Save")',
+                'mat-dialog-container button:has-text("Send")',
+                'mat-dialog-container button:has-text("Share")',
+                'mat-dialog-container button:has-text("Invite")',
+                'mat-dialog-container button[aria-label="Send"]',
+                'mat-dialog-container button[type="submit"]',
+                'div[role="dialog"] button:has-text("Save")',
+                'div[role="dialog"] button:has-text("Send")',
+                'div[role="dialog"] button:has-text("Share")',
+                'div[role="dialog"] button:has-text("Invite")',
+                'div[role="dialog"] button[aria-label="Send"]',
+                'div[role="dialog"] button[type="submit"]',
                 'button:has-text("Save")',
+                'button:has-text("Send")',
                 'button:has-text("Invite")',
                 'button[aria-label="Send"]',
                 'button[type="submit"]'
@@ -2099,7 +2133,17 @@ class NotebookLMAutomator:
                 await self.page.keyboard.press('Enter')
                 await asyncio.sleep(2)
             else:
-                await send_button.click()
+                try:
+                    await send_button.click()
+                except Exception as click_error:
+                    if 'intercepts pointer events' not in str(click_error):
+                        raise
+
+                    self.logger.warning(
+                        f"⚠️ Send button click intercepted by overlay; retrying after Escape: {click_error}"
+                    )
+                    await self._dismiss_nested_overlay_backdrop()
+                    await send_button.click()
                 await asyncio.sleep(2)
 
             self.logger.info(f"✅ Notebook shared with {email}")

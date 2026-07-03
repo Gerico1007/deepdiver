@@ -7,7 +7,8 @@ using NotebookLM's Audio Overview feature through browser automation.
 Part of Jerry's G.Music Assembly ecosystem.
 """
 
-__version__ = "0.1.0"
+from ._version import __version__
+
 __author__ = "gerico1007"
 __email__ = "gerico@jgwill.com"
 __description__ = "NotebookLM Podcast Automation System"

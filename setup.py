@@ -11,13 +11,13 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="deepdiver",
-    version="0.1.0",
+    version="0.1.1",
     author="gerico1007",
     author_email="gerico@jgwill.com",
     description="NotebookLM Podcast Automation System",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/gmusic/deepdiver",
+    url="https://github.com/Gerico1007/deepdiver",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",
@@ -25,12 +25,10 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.10",
     install_requires=[
         "playwright>=1.40.0",
         "pyyaml>=6.0",

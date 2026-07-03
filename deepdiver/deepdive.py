@@ -21,6 +21,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
+from ._version import __version__
 from .notebooklm_automator import (
     NotebookLMAutomator,
     find_chrome_executable,
@@ -48,7 +49,7 @@ def print_assembly_header():
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="DeepDiver")
+@click.version_option(version=__version__, prog_name="DeepDiver")
 def cli():
     """
     🎙️ DeepDiver - NotebookLM Podcast Automation System
