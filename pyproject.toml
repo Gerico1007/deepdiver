@@ -11,10 +11,10 @@ authors = [
 description = "NotebookLM Podcast Automation System - Automate podcast creation from documents"
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -56,7 +56,7 @@ deepdiver = "deepdiver.deepdive:main"
 packages = ["deepdiver"]
 
 [tool.setuptools.package-data]
-deepdiver = ["*.yaml", "*.yml"]
+deepdiver = ["*.yaml"]
 
 [tool.black]
 line-length = 100
