@@ -3,6 +3,7 @@ include LICENSE
 include ROADMAP.md
 include CLAUDE.md
 recursive-include deepdiver *.yaml
+recursive-include deepdiver/skills *.md
 recursive-include tests *.py
 global-exclude __pycache__
 global-exclude *.py[co]

@@ -56,7 +56,7 @@ deepdiver = "deepdiver.deepdive:main"
 packages = ["deepdiver"]
 
 [tool.setuptools.package-data]
-deepdiver = ["*.yaml"]
+deepdiver = ["*.yaml", "skills/**/*.md"]
 
 [tool.black]
 line-length = 100
