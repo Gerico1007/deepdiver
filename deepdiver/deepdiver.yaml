@@ -72,6 +72,13 @@ STUDIO_SETTINGS:
     default_visual_style: auto       # auto, classic, whiteboard, kawaii, anime, etc.
     default_language: English
     generation_timeout: 600
+  slide_deck:
+    default_format: presenter        # presenter (spoken deck), detailed (dense leave-behind)
+    default_language: English
+    generation_timeout: 900
+    polling_interval: 5
+  # Other families (mind_map, reports, flashcards, quiz, infographic,
+  # data_table) accept the same keys; unset families use safe defaults.
   artifact_download_dir: ./output/artifacts
   enable_progress_feedback: true     # Show generation progress to user
 
