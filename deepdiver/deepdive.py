@@ -340,8 +340,9 @@ def podcast(source: str, title: str, output: str, config: str):
             os.makedirs(output, exist_ok=True)
             
             console.print("⬇️ Downloading audio...", style="blue")
-            if await automator.download_audio(output_path):
-                console.print(f"✅ Podcast created successfully: {output_path}", style="green")
+            saved_path = await automator.download_audio(output_path)
+            if saved_path:
+                console.print(f"✅ Podcast created successfully: {saved_path}", style="green")
             else:
                 console.print("❌ Failed to download audio", style="red")
         
@@ -1109,16 +1110,17 @@ def studio_audio(format: Optional[str], language: str, length: Optional[str],
                         output_path = os.path.join(artifact_dir, f'audio-overview-{stamp}.mp3')
 
                     console.print(f"⬇️ Downloading audio to: {output_path}", style="blue")
-                    if await automator.download_audio(output_path):
-                        size = os.path.getsize(output_path)
-                        console.print(f"✅ Downloaded ({size} bytes): {output_path}", style="green")
+                    saved_path = await automator.download_audio(output_path)
+                    if saved_path:
+                        size = os.path.getsize(saved_path)
+                        console.print(f"✅ Downloaded ({size} bytes): {saved_path}", style="green")
                         if tracker.current_session and notebook_id:
                             tracker.record_artifact_download(notebook_id,
                                                              artifact_data.get('artifact_id'), {
                                 'title': artifact_data.get('title'),
-                                'path': output_path,
+                                'path': saved_path,
                                 'size': size,
-                                'sha256': automator._sha256_file(output_path),
+                                'sha256': automator._sha256_file(saved_path),
                                 'downloaded_at': datetime.now().isoformat(),
                             })
                     else:

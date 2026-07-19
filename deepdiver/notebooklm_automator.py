@@ -1391,6 +1391,12 @@ class NotebookLMAutomator:
             # Ensure we're on Sources tab (where Studio panel is located)
             await self._ensure_sources_tab_active()
 
+            # Snapshot pre-existing completed Audio Overview cards so a repeat
+            # generation returns the NEW card's metadata, not a stale match.
+            baseline_snapshot = await self._completed_card_snapshot('audio_overview')
+            baseline_count = len(baseline_snapshot)
+            baseline_keys = {c['card_key'] for c in baseline_snapshot}
+
             # Step 1: Look for the edit/pencil icon next to Audio Overview in Studio panel
             # This is the correct entry point for customization
             self.logger.info("🔍 Looking for Audio Overview customization icon (pencil/edit)...")
@@ -1739,7 +1745,9 @@ class NotebookLMAutomator:
             artifact_data = await self._monitor_audio_generation(
                 generation_start_time,
                 generation_timeout,
-                polling_interval
+                polling_interval,
+                baseline_count=baseline_count,
+                baseline_keys=baseline_keys,
             )
 
             if artifact_data:
@@ -1818,9 +1826,17 @@ class NotebookLMAutomator:
         """
         List every artifact card currently visible in the Studio panel.
 
+        Each returned dict carries a ``dom_index`` — the card's position in
+        the UNFILTERED ``artifact-library-item`` list — so a later download
+        pass can re-locate the exact same card by that stable key instead of
+        by its ordinal in this visibility-filtered list. The two lists only
+        align when nothing was filtered; ``dom_index`` keeps identity honest
+        when a non-visible/virtualized card precedes visible ones.
+
         Returns:
-            List of artifact metadata dicts with title/details plus the
-            aria-description family label when the card exposes one.
+            List of artifact metadata dicts with title/details, the
+            aria-description family label when the card exposes one, and the
+            card's ``dom_index`` in the full DOM list.
         """
         artifacts: List[Dict[str, Any]] = []
         if not self.page:
@@ -1828,11 +1844,12 @@ class NotebookLMAutomator:
 
         try:
             cards = await self.page.query_selector_all('artifact-library-item')
-            for card in cards:
+            for dom_index, card in enumerate(cards):
                 try:
                     if not await card.is_visible():
                         continue
                     data = await self._extract_artifact_metadata(card)
+                    data['dom_index'] = dom_index
                     try:
                         described = await card.query_selector('[aria-description]')
                         if described:
@@ -1859,6 +1876,7 @@ class NotebookLMAutomator:
         polling_interval: int,
         artifact_type: str = 'audio_overview',
         baseline_count: int = 0,
+        baseline_keys: Optional[set] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Monitor Studio artifact generation until a completed card appears.
@@ -1873,6 +1891,12 @@ class NotebookLMAutomator:
             baseline_count: Completed cards of this family present BEFORE
                             generation started, so a pre-existing artifact
                             is not mistaken for the new one.
+            baseline_keys: Stable identity keys of those pre-existing cards.
+                            When a new card appears (baseline_count > 0), the
+                            NEW card is identified by set-difference against
+                            these keys so the returned metadata describes the
+                            freshly generated artifact — not whichever card the
+                            completion selectors happened to match first.
 
         Returns:
             Optional[Dict[str, Any]]: Artifact metadata if completed, None if timeout/error
@@ -1892,10 +1916,13 @@ class NotebookLMAutomator:
                 if detected:
                     current_count = await self._count_completed_cards(artifact_type)
                     if current_count > baseline_count or baseline_count == 0:
+                        result = await self._resolve_new_artifact(
+                            detected, artifact_type, baseline_count, baseline_keys
+                        )
                         generation_time = int(time.time() - start_time)
                         self.logger.info(f"✅ Generation completed in {generation_time}s")
-                        detected['generation_time'] = generation_time
-                        return detected
+                        result['generation_time'] = generation_time
+                        return result
 
                 # Wait before polling again
                 await self.page.wait_for_timeout(polling_interval * 1000)
@@ -1906,12 +1933,15 @@ class NotebookLMAutomator:
             elapsed = int(time.time() - start_time)
             detected = await self.detect_completed_artifact(artifact_type)
             if detected:
+                result = await self._resolve_new_artifact(
+                    detected, artifact_type, baseline_count, baseline_keys
+                )
                 self.logger.warning(
                     f"⚠️ Timeout after {elapsed}s but a completed {artifact_type} card is present — recovering it"
                 )
-                detected['generation_time'] = elapsed
-                detected['recovered_after_timeout'] = True
-                return detected
+                result['generation_time'] = elapsed
+                result['recovered_after_timeout'] = True
+                return result
 
             self.logger.error(f"❌ Generation timeout after {elapsed}s")
             return None
@@ -1941,15 +1971,119 @@ class NotebookLMAutomator:
         except Exception:
             return 0
 
+    async def _card_identity(self, card) -> str:
+        """
+        Stable per-card identity that survives across two DOM snapshots.
+
+        Prefers a real DOM id (data-artifact-id / data-id / id). Note the
+        metadata extractor falls back to a RANDOM hash when the DOM exposes
+        no id, and a random hash is not stable between snapshots — so identity
+        here is instead computed directly from the element as a
+        family+title+details fingerprint when no DOM id exists.
+        """
+        for attr in ('data-artifact-id', 'data-id', 'id'):
+            try:
+                value = await card.get_attribute(attr)
+                if value:
+                    return f'{attr}:{value}'
+            except Exception:
+                continue
+
+        parts: List[str] = []
+        try:
+            described = await card.query_selector('[aria-description]')
+            if described:
+                parts.append((await described.get_attribute('aria-description')) or '')
+        except Exception:
+            pass
+        try:
+            title_el = await card.query_selector('.artifact-title')
+            if title_el:
+                parts.append((await title_el.inner_text()).strip())
+        except Exception:
+            pass
+        try:
+            details_el = await card.query_selector('.artifact-details')
+            if details_el:
+                parts.append(' '.join((await details_el.inner_text()).split()))
+        except Exception:
+            pass
+        return 'fp:' + '|'.join(parts)
+
+    async def _completed_card_snapshot(self, artifact_type: str) -> List[Dict[str, Any]]:
+        """
+        Snapshot every visible completed card of a family with its identity.
+
+        Each entry is the card's extracted metadata plus a ``card_key`` (from
+        :meth:`_card_identity`), enabling a baseline-vs-current set diff that
+        names the NEW card instead of the first-matched one.
+        """
+        spec = get_artifact_spec(artifact_type)
+        label = spec['label'] if spec else None
+        type_key = normalize_artifact_type(artifact_type) or artifact_type
+        snapshot: List[Dict[str, Any]] = []
+        if not self.page:
+            return snapshot
+
+        selector = (
+            f'artifact-library-item:has([aria-description="{label}"])'
+            if label else 'artifact-library-item'
+        )
+        try:
+            cards = await self.page.query_selector_all(selector)
+        except Exception:
+            return snapshot
+
+        for card in cards:
+            try:
+                if not await card.is_visible():
+                    continue
+                meta = await self._extract_artifact_metadata(card)
+                meta['status'] = 'completed'
+                meta['type'] = type_key
+                meta['card_key'] = await self._card_identity(card)
+                snapshot.append(meta)
+            except Exception:
+                continue
+        return snapshot
+
+    async def _resolve_new_artifact(
+        self,
+        detected: Dict[str, Any],
+        artifact_type: str,
+        baseline_count: int,
+        baseline_keys: Optional[set],
+    ) -> Dict[str, Any]:
+        """
+        Return the metadata of the NEWLY generated card.
+
+        On a fresh notebook (baseline_count == 0) ``detected`` is already the
+        only card of the family. On a repeat generation, ``detected`` may be a
+        pre-existing card (DOM-order first match); diff the current completed
+        set against ``baseline_keys`` and return the ADDED card so session
+        tracking never binds a fresh generation to a stale artifact's id/title.
+        """
+        if baseline_count > 0 and baseline_keys is not None:
+            snapshot = await self._completed_card_snapshot(artifact_type)
+            added = [c for c in snapshot if c.get('card_key') not in baseline_keys]
+            if added:
+                new_card = added[-1]
+                new_card.pop('card_key', None)
+                return new_card
+        return detected
+
     async def _monitor_audio_generation(
         self,
         start_time: float,
         timeout: int,
-        polling_interval: int
+        polling_interval: int,
+        baseline_count: int = 0,
+        baseline_keys: Optional[set] = None,
     ) -> Optional[Dict[str, Any]]:
         """Backward-compatible wrapper around _monitor_artifact_generation."""
         return await self._monitor_artifact_generation(
-            start_time, timeout, polling_interval, artifact_type='audio_overview'
+            start_time, timeout, polling_interval, artifact_type='audio_overview',
+            baseline_count=baseline_count, baseline_keys=baseline_keys,
         )
 
     async def generate_studio_artifact(
@@ -2028,7 +2162,9 @@ class NotebookLMAutomator:
             await self.dismiss_rebrand_modal()
             await self._ensure_sources_tab_active()
 
-            baseline_count = await self._count_completed_cards(type_key)
+            baseline_snapshot = await self._completed_card_snapshot(type_key)
+            baseline_count = len(baseline_snapshot)
+            baseline_keys = {c['card_key'] for c in baseline_snapshot}
 
             # Open the tile → customization dialog.
             dialog = self.page.get_by_role('dialog').filter(has_text=label)
@@ -2145,6 +2281,7 @@ class NotebookLMAutomator:
                 polling_interval,
                 artifact_type=type_key,
                 baseline_count=baseline_count,
+                baseline_keys=baseline_keys,
             )
 
             if not artifact_data:
@@ -2410,27 +2547,36 @@ class NotebookLMAutomator:
         except Exception as e:
             self.logger.warning(f"⚠️ Could not ensure Sources tab: {e}")
     
-    async def download_audio(self, output_path: str) -> bool:
+    async def download_audio(self, output_path: str) -> Optional[str]:
         """
         Download the generated audio file.
-        
+
+        The final extension is derived from the browser's suggested filename
+        (NotebookLM commonly hands back an ``.m4a`` container) rather than the
+        hardcoded ``.mp3`` the caller may have requested: the caller's stem is
+        kept, only the extension is swapped when the browser disagrees, so the
+        saved filename never lies about its container.
+
         Args:
-            output_path (str): Path where to save the audio file
-            
+            output_path (str): Desired path (stem is honored; extension may be
+                               corrected to match the download).
+
         Returns:
-            bool: True if download successful, False otherwise
+            Optional[str]: The REAL path the file was saved to on success (so
+                           callers/manifests reflect the true file), or None
+                           on failure.
         """
         try:
             if not self.page:
                 self.logger.error("❌ No browser page available")
-                return False
-            
+                return None
+
             self.logger.info(f"⬇️ Downloading audio to: {output_path}")
 
             selector, download_target = await self._prepare_download_target()
             if not download_target:
                 self.logger.error("❌ Could not find download button")
-                return False
+                return None
 
             if selector and selector.startswith('a'):
                 await download_target.evaluate(
@@ -2441,25 +2587,42 @@ class NotebookLMAutomator:
                 )
 
             os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
-            
+
             # Set up download handling
             async with self.page.expect_download() as download_info:
                 await download_target.click()
-            
-            download = await download_info.value
-            self.logger.info(f"📥 Browser suggested filename: {download.suggested_filename}")
-            await download.save_as(output_path)
 
-            if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            download = await download_info.value
+            suggested = getattr(download, 'suggested_filename', None)
+            self.logger.info(f"📥 Browser suggested filename: {suggested}")
+
+            # Honor the real container: keep the caller's stem, swap the
+            # extension when the browser's suggestion differs.
+            final_path = output_path
+            if suggested:
+                suggested_ext = os.path.splitext(suggested)[1]
+                current_ext = os.path.splitext(output_path)[1]
+                if suggested_ext and suggested_ext.lower() != current_ext.lower():
+                    stem = os.path.splitext(output_path)[0]
+                    final_path = stem + suggested_ext
+                    self.logger.info(
+                        f"🔤 Adjusting extension {current_ext or '(none)'} → {suggested_ext} "
+                        f"to match the downloaded container"
+                    )
+
+            os.makedirs(os.path.dirname(final_path) or '.', exist_ok=True)
+            await download.save_as(final_path)
+
+            if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
                 self.logger.error("❌ Download finished but no file was saved")
-                return False
-            
-            self.logger.info("✅ Audio download completed")
-            return True
-            
+                return None
+
+            self.logger.info(f"✅ Audio download completed → {final_path}")
+            return final_path
+
         except Exception as e:
             self.logger.error(f"❌ Failed to download audio: {e}")
-            return False
+            return None
     
     @staticmethod
     def _probe_media(path: str) -> Optional[Dict[str, Any]]:
@@ -2549,7 +2712,40 @@ class NotebookLMAutomator:
 
         for index, artifact in enumerate(artifacts):
             title = artifact.get('title') or f'artifact-{index + 1}'
-            if not artifact.get('playable'):
+
+            # Gate on the registry's authoritative `downloadable` flag, mapped
+            # from the card's family label, rather than the runtime Play button
+            # alone — two sources of truth otherwise disagree (e.g. a video
+            # card is playable+downloadable but has no audio download mechanic).
+            family_label = artifact.get('family_label')
+            spec = get_artifact_spec(family_label) if family_label else None
+            type_key = normalize_artifact_type(family_label) if family_label else None
+
+            if spec is not None:
+                if not spec.get('downloadable'):
+                    self.logger.info(f"⏭️ Skipping non-downloadable artifact: {title}")
+                    manifest['skipped'].append(
+                        {'title': title, 'reason': f'{family_label}: not downloadable per registry'}
+                    )
+                    continue
+                # Downloadable per registry but only Audio Overview has a working
+                # download path today; anything else (video_overview, ...) would
+                # be forced through the audio-player anchor hunt and fail — skip
+                # with a precise, honest reason instead of a bogus attempt.
+                if type_key and type_key != 'audio_overview':
+                    self.logger.info(
+                        f"⏭️ Skipping {family_label}: downloadable but no non-audio download path yet"
+                    )
+                    manifest['skipped'].append({
+                        'title': title,
+                        'reason': (
+                            f'{family_label}: downloadable but only audio download mechanics exist '
+                            f'(no {type_key} download path yet)'
+                        ),
+                    })
+                    continue
+            elif not artifact.get('playable'):
+                # Unknown family with no Play control — nothing to download.
                 self.logger.info(f"⏭️ Skipping non-downloadable artifact: {title}")
                 manifest['skipped'].append({'title': title, 'reason': 'not playable/downloadable'})
                 continue
@@ -2558,35 +2754,41 @@ class NotebookLMAutomator:
                 ch if ch.isalnum() or ch in ('-', '_') else '-' for ch in title.strip()
             ).strip('-') or f'artifact-{index + 1}'
             timestamp = datetime.now().strftime('%Y%m%dT%H%M%S')
+            # Caller's requested stem/extension; download_audio swaps the
+            # extension when the browser's suggested filename disagrees.
             output_path = os.path.join(output_dir, f'{safe_title}-{timestamp}.mp3')
 
             try:
-                # Re-resolve the card each pass — the DOM may have re-rendered.
+                # Re-locate the SAME card by its stable DOM index, never by this
+                # loop's ordinal (which counts a visibility-filtered list while
+                # the DOM list is unfiltered — the wrong-artifact bug).
+                dom_index = artifact.get('dom_index')
                 cards = await self.page.query_selector_all('artifact-library-item')
-                if index >= len(cards):
+                if dom_index is None or dom_index >= len(cards):
                     manifest['skipped'].append({'title': title, 'reason': 'card disappeared'})
                     continue
-                card = cards[index]
+                card = cards[dom_index]
                 play_button = await card.query_selector('button[aria-label="Play"]')
                 if play_button:
                     await play_button.click()
                     await self.page.wait_for_timeout(1500)
 
-                if await self.download_audio(output_path):
+                saved_path = await self.download_audio(output_path)
+                if saved_path:
                     entry = {
                         'title': title,
                         'family_label': artifact.get('family_label'),
                         'artifact_id': artifact.get('artifact_id'),
-                        'path': output_path,
-                        'size': os.path.getsize(output_path),
-                        'sha256': self._sha256_file(output_path),
+                        'path': saved_path,
+                        'size': os.path.getsize(saved_path),
+                        'sha256': self._sha256_file(saved_path),
                         'downloaded_at': datetime.now().isoformat(),
                     }
-                    media_info = self._probe_media(output_path)
+                    media_info = self._probe_media(saved_path)
                     if media_info:
                         entry['media'] = media_info
                     manifest['downloads'].append(entry)
-                    self.logger.info(f"✅ Downloaded: {title} → {output_path}")
+                    self.logger.info(f"✅ Downloaded: {title} → {saved_path}")
 
                     if notebook_id and self.session_tracker:
                         try:
@@ -2763,15 +2965,20 @@ class NotebookLMAutomator:
             self.logger.info(f"🔄 Navigating to notebook: {target_url}")
 
             # Prefer a tab that already has this notebook open: reusing it
-            # preserves live state (player, generation progress) over goto.
+            # preserves live state (player, generation progress). A goto on the
+            # reused tab would reload it and destroy exactly that state, so the
+            # goto runs ONLY when we are not already there.
             existing_page = await self.find_open_notebook_page(notebook_id)
-            if existing_page and notebook_id and notebook_id in (existing_page.url or ''):
+            already_here = bool(
+                existing_page and notebook_id and notebook_id in (existing_page.url or '')
+            )
+            if already_here:
                 self.page = existing_page
                 await existing_page.bring_to_front()
-                self.logger.info("♻️ Reusing already-open notebook tab")
-
-            # Navigate to the notebook URL
-            await self.page.goto(target_url, timeout=30000)
+                self.logger.info("♻️ Reusing already-open notebook tab (skipping reload to preserve live state)")
+            else:
+                # Navigate to the notebook URL
+                await self.page.goto(target_url, timeout=30000)
 
             # Wait for load state (use 'load' instead of 'networkidle' - networkidle can hang with background polling)
             try:

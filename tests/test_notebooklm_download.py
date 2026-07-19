@@ -60,7 +60,8 @@ def test_download_audio_uses_menu_download_link_when_direct_control_is_hidden(tm
     output_path = tmp_path / "artifact.m4a"
     result = asyncio.run(automator.download_audio(str(output_path)))
 
-    assert result is True
+    # download_audio returns the REAL saved path (suggested ext matches here).
+    assert result == str(output_path)
     menu_button.click.assert_awaited_once()
     download_link.evaluate.assert_awaited_once()
     download_link.click.assert_awaited_once()
