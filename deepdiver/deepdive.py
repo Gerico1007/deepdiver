@@ -26,14 +26,28 @@ from .notebooklm_automator import (
     NotebookLMAutomator,
     find_chrome_executable,
     check_chrome_cdp_running,
+    get_cdp_version_info,
     launch_chrome_cdp,
     get_cdp_url,
     find_config_file
+)
+from .studio_artifacts import (
+    ARTIFACT_TYPES,
+    list_artifact_type_keys,
+    normalize_artifact_type,
 )
 
 
 # Initialize Rich console for beautiful output
 console = Console()
+
+
+def cdp_url_option(f):
+    """Shared --cdp-url override flag for browser-connecting commands."""
+    return click.option(
+        '--cdp-url', default=None,
+        help='Override CDP URL (e.g. http://127.0.0.1:9222); beats env/config'
+    )(f)
 
 
 def print_assembly_header():
@@ -310,13 +324,14 @@ def podcast(source: str, title: str, output: str, config: str):
             
             # Upload document
             console.print("📤 Uploading document...", style="blue")
-            if not await automator.upload_document(source):
+            notebook_id = await automator.upload_document(source)
+            if not notebook_id:
                 console.print("❌ Failed to upload document", style="red")
                 return
-            
+
             # Generate Audio Overview
             console.print("🎵 Generating Audio Overview...", style="blue")
-            if not await automator.generate_audio_overview(title):
+            if not await automator.generate_audio_overview(notebook_id=notebook_id):
                 console.print("❌ Failed to generate Audio Overview", style="red")
                 return
             
@@ -325,8 +340,9 @@ def podcast(source: str, title: str, output: str, config: str):
             os.makedirs(output, exist_ok=True)
             
             console.print("⬇️ Downloading audio...", style="blue")
-            if await automator.download_audio(output_path):
-                console.print(f"✅ Podcast created successfully: {output_path}", style="green")
+            saved_path = await automator.download_audio(output_path)
+            if saved_path:
+                console.print(f"✅ Podcast created successfully: {saved_path}", style="green")
             else:
                 console.print("❌ Failed to download audio", style="red")
         
@@ -352,14 +368,26 @@ def session():
               help='Path to configuration file')
 def start(ai: str, issue: Optional[int], config: str):
     """Start a new DeepDiver session."""
+    from .session_tracker import SessionTracker
+
     console.print("🔮 Starting new DeepDiver session...", style="blue")
     console.print(f"🤖 AI Assistant: {ai}", style="blue")
     if issue:
         console.print(f"🎯 Issue: #{issue}", style="blue")
-    
-    # TODO: Implement session management
-    console.print("⚠️ Session management not yet implemented", style="yellow")
-    console.print("This feature will be available in a future release", style="yellow")
+
+    tracker = SessionTracker()
+    if tracker.load_current_session():
+        console.print("⚠️ An active session already exists:", style="yellow")
+        console.print(f"   {tracker.current_session['session_id'][:16]}...", style="dim")
+        console.print("💡 Close it first or continue using it", style="yellow")
+        return
+
+    result = tracker.start_session(ai_assistant=ai, issue_number=issue)
+    if result.get('success'):
+        console.print(f"✅ Session started: {result['session_id'][:16]}...", style="green")
+        console.print(f"💾 Session file: {result['session_path']}", style="dim")
+    else:
+        console.print(f"❌ Failed to start session: {result.get('error')}", style="red")
 
 
 @session.command()
@@ -367,12 +395,21 @@ def start(ai: str, issue: Optional[int], config: str):
 @click.option('--config', '-c', default='deepdiver/deepdiver.yaml',
               help='Path to configuration file')
 def write(message: str, config: str):
-    """Write to the current session."""
+    """Write a note into the current session."""
+    from .session_tracker import SessionTracker
+
     console.print(f"✍️ Writing to session: {message}", style="blue")
-    
-    # TODO: Implement session writing
-    console.print("⚠️ Session writing not yet implemented", style="yellow")
-    console.print("This feature will be available in a future release", style="yellow")
+
+    tracker = SessionTracker()
+    if not tracker.load_current_session():
+        console.print("❌ No active session", style="red")
+        console.print("💡 Start one with: deepdiver session start", style="yellow")
+        return
+
+    if tracker.write_to_session(message):
+        console.print("✅ Message written to session", style="green")
+    else:
+        console.print("❌ Failed to write to session", style="red")
 
 
 @session.command()
@@ -434,23 +471,30 @@ def close_session(config: str):
 
 
 @cli.command()
+@cdp_url_option
 @click.option('--config', '-c', default='deepdiver/deepdiver.yaml',
               help='Path to configuration file')
-def status(config: str):
-    """Show DeepDiver system status."""
+def status(cdp_url: str, config: str):
+    """Show DeepDiver system status with a real CDP probe."""
     console.print("📊 DeepDiver System Status", style="blue")
-    
+
     try:
         # Check configuration
-        automator = NotebookLMAutomator(config)
+        automator = NotebookLMAutomator(config, cdp_url_override=cdp_url)
         console.print("✅ Configuration loaded", style="green")
-        
-        # Check Chrome browser
-        console.print("🔍 Checking Chrome browser...", style="blue")
-        console.print("Make sure Chrome is running with CDP enabled", style="yellow")
-        
-        console.print("🎯 System Status: Ready for automation", style="green")
-        
+
+        # Probe the actual CDP endpoint — a healthy config means nothing
+        # if Chrome isn't answering on the debug port.
+        console.print(f"🔍 Probing CDP endpoint: {automator.cdp_url}", style="blue")
+        version_info = get_cdp_version_info(automator.cdp_url)
+        if version_info:
+            console.print(f"✅ Chrome CDP live: {version_info.get('Browser', 'unknown')}", style="green")
+            console.print("🎯 System Status: Ready for automation", style="green")
+        else:
+            console.print("❌ Chrome CDP is NOT answering", style="red")
+            console.print("💡 Launch it with: deepdiver chrome launch", style="yellow")
+            console.print("🎯 System Status: NOT ready — browser required", style="red")
+
     except Exception as e:
         console.print(f"❌ System status check failed: {e}", style="red")
 
@@ -856,6 +900,76 @@ def notebook_add_source(notebook_id: str, source: str, name: Optional[str], conf
     asyncio.run(run_add_source())
 
 
+@notebook.command(name='resume')
+@click.argument('notebook_id')
+@click.option('--source', '-s', 'sources', multiple=True,
+              help='Local file that should be in the notebook (repeatable)')
+@click.option('--source-dir', type=click.Path(exists=True, file_okay=False),
+              help='Upload every file in this directory that is not yet in the notebook')
+@cdp_url_option
+@click.option('--config', '-c', default='deepdiver/deepdiver.yaml',
+              help='Path to configuration file')
+def notebook_resume(notebook_id: str, sources: tuple, source_dir: Optional[str],
+                    cdp_url: str, config: str):
+    """Resume an existing notebook: upload only its missing sources.
+
+    Prefer resume over recreate. The session tracker's source list is
+    diffed against the given files; already-uploaded names are skipped so
+    a partially-completed run continues instead of starting over.
+
+    Examples:
+        deepdiver notebook resume abc-123 -s notes.md -s summary.pdf
+        deepdiver notebook resume abc-123 --source-dir ./packet/sources
+    """
+    from .notebooklm_automator import NotebookLMAutomator
+    from .session_tracker import SessionTracker
+
+    source_paths = list(sources)
+    if source_dir:
+        source_paths.extend(sorted(
+            str(p) for p in Path(source_dir).iterdir() if p.is_file()
+        ))
+
+    if not source_paths:
+        console.print("❌ No sources given — use --source or --source-dir", style="red")
+        return
+
+    console.print(f"♻️ Resuming notebook: {notebook_id}", style="blue")
+    console.print(f"📄 Candidate sources: {len(source_paths)}", style="cyan")
+
+    async def run_resume():
+        tracker = SessionTracker()
+        tracker.load_current_session()
+        automator = NotebookLMAutomator(config, cdp_url_override=cdp_url,
+                                        session_tracker=tracker)
+
+        try:
+            if not await automator.connect_to_browser():
+                console.print("❌ Failed to connect to browser", style="red")
+                return
+
+            summary = await automator.resume_notebook(notebook_id, source_paths)
+
+            if summary.get('error'):
+                console.print(f"❌ {summary['error']}", style="red")
+                return
+
+            console.print(f"✅ Resume complete", style="green")
+            console.print(f"   Already present: {len(summary['skipped'])}", style="dim")
+            console.print(f"   Uploaded now:    {len(summary['uploaded'])}", style="cyan")
+            for name in summary['uploaded']:
+                console.print(f"     • {name}", style="cyan")
+            if summary['failed']:
+                console.print(f"   Failed:          {len(summary['failed'])}", style="red")
+                for item in summary['failed']:
+                    console.print(f"     • {item['filename']}: {item['error']}", style="red")
+            console.print("🔗 Browser kept open for next command", style="dim")
+        except Exception as e:
+            console.print(f"❌ Resume failed: {e}", style="red")
+
+    asyncio.run(run_resume())
+
+
 # ═══════════════════════════════════════════════════════════════
 # STUDIO COMMANDS
 # 🌸 Miette: Commands for giving DeepDiver a voice
@@ -865,12 +979,12 @@ def notebook_add_source(notebook_id: str, source: str, name: Optional[str], conf
 def studio():
     """Studio artifact generation commands.
 
-    🎙️ Generate Audio Overviews with advanced customization
-    🎬 Generate Video Overviews (coming soon)
-    🗺️ Generate Mind Maps (coming soon)
-    📄 Generate Reports (coming soon)
-    📇 Generate Flashcards (coming soon)
-    ❓ Generate Quizzes (coming soon)
+    🎙️ audio       — Audio Overview with full customization (+ --download)
+    🖼️ slide-deck  — Presenter/Detailed slide decks
+    🎨 generate    — any Studio family (video_overview, mind_map, reports,
+                     flashcards, quiz, infographic, data_table, ...)
+    📋 list        — artifact cards currently visible in the Studio panel
+    ⬇️ download    — download all downloadable artifacts + manifest.json
     """
     pass
 
@@ -886,10 +1000,16 @@ def studio():
               help='Podcast length (default: default)')
 @click.option('--focus', help='Focus prompt for AI hosts (max 5000 chars)')
 @click.option('--notebook-id', '-n', help='Notebook ID (uses current session if not provided)')
+@click.option('--download/--no-download', default=False,
+              help='Download the generated audio when complete')
+@click.option('--output', '-o', default=None,
+              help='Output path for downloaded audio (default: STUDIO_SETTINGS artifact dir)')
+@cdp_url_option
 @click.option('--config', '-c', default='deepdiver/deepdiver.yaml',
               help='Path to configuration file')
 def studio_audio(format: Optional[str], language: str, length: Optional[str],
-                 focus: Optional[str], notebook_id: Optional[str], config: str):
+                 focus: Optional[str], notebook_id: Optional[str],
+                 download: bool, output: Optional[str], cdp_url: str, config: str):
     """Generate Audio Overview with advanced customization.
 
     🌸 Miette: "This is the ceremony of giving voice to content."
@@ -948,9 +1068,10 @@ def studio_audio(format: Optional[str], language: str, length: Optional[str],
         from .notebooklm_automator import NotebookLMAutomator
         from .session_tracker import SessionTracker
 
-        automator = NotebookLMAutomator(config)
         tracker = SessionTracker()
-        tracker._load_current_session()
+        tracker.load_current_session()
+        automator = NotebookLMAutomator(config, cdp_url_override=cdp_url,
+                                        session_tracker=tracker)
 
         try:
             # Connect to browser
@@ -977,12 +1098,33 @@ def studio_audio(format: Optional[str], language: str, length: Optional[str],
                 console.print(f"🌍 Language: {artifact_data.get('language', 'unknown')}", style="cyan")
                 console.print(f"📏 Length: {artifact_data.get('length', 'unknown')}", style="cyan")
                 console.print(f"⏱️ Generation time: {artifact_data.get('generation_time', 0)}s", style="cyan")
+                if artifact_data.get('recovered_after_timeout'):
+                    console.print("♻️ Recovered after monitor timeout (artifact card was present)", style="yellow")
 
-                # Track in session if available
-                if tracker.current_session and notebook_id:
-                    # TODO: Add artifact tracking to session
-                    # tracker.add_artifact_to_notebook(notebook_id, artifact_data)
-                    pass
+                if download:
+                    output_path = output
+                    if not output_path:
+                        artifact_dir = automator.config.get('STUDIO_SETTINGS', {}).get(
+                            'artifact_download_dir', './output/artifacts')
+                        stamp = datetime.now().strftime('%Y%m%dT%H%M%S')
+                        output_path = os.path.join(artifact_dir, f'audio-overview-{stamp}.mp3')
+
+                    console.print(f"⬇️ Downloading audio to: {output_path}", style="blue")
+                    saved_path = await automator.download_audio(output_path)
+                    if saved_path:
+                        size = os.path.getsize(saved_path)
+                        console.print(f"✅ Downloaded ({size} bytes): {saved_path}", style="green")
+                        if tracker.current_session and notebook_id:
+                            tracker.record_artifact_download(notebook_id,
+                                                             artifact_data.get('artifact_id'), {
+                                'title': artifact_data.get('title'),
+                                'path': saved_path,
+                                'size': size,
+                                'sha256': automator._sha256_file(saved_path),
+                                'downloaded_at': datetime.now().isoformat(),
+                            })
+                    else:
+                        console.print("❌ Download failed — artifact remains in NotebookLM", style="red")
 
                 console.print(f"🔗 Browser kept open - artifact ready to load", style="dim")
             else:
@@ -995,6 +1137,375 @@ def studio_audio(format: Optional[str], language: str, length: Optional[str],
             console.print(traceback.format_exc(), style="dim")
 
     asyncio.run(run_audio_generation())
+
+
+def _run_studio_generation(artifact_type: str, format: Optional[str], language: Optional[str],
+                           length: Optional[str], focus: Optional[str],
+                           notebook_id: Optional[str], cdp_url: Optional[str], config: str):
+    """Shared runner for non-audio Studio artifact generation commands."""
+    from .notebooklm_automator import NotebookLMAutomator
+    from .session_tracker import SessionTracker
+
+    async def run_generation():
+        tracker = SessionTracker()
+        tracker.load_current_session()
+        automator = NotebookLMAutomator(config, cdp_url_override=cdp_url,
+                                        session_tracker=tracker)
+
+        try:
+            if not await automator.connect_to_browser():
+                console.print("❌ Failed to connect to browser", style="red")
+                console.print("💡 Make sure Chrome is running with: deepdiver init", style="yellow")
+                return
+
+            artifact_data = await automator.generate_studio_artifact(
+                artifact_type,
+                format=format,
+                language=language,
+                length=length,
+                focus_prompt=focus,
+                notebook_id=notebook_id,
+            )
+
+            if artifact_data:
+                console.print(f"✅ Artifact generated successfully!", style="green")
+                console.print(f"📋 Artifact ID: {artifact_data.get('artifact_id', 'unknown')}", style="cyan")
+                if artifact_data.get('title'):
+                    console.print(f"🏷️ Title: {artifact_data['title']}", style="cyan")
+                console.print(f"⏱️ Generation time: {artifact_data.get('generation_time', 0)}s", style="cyan")
+                if artifact_data.get('recovered_after_timeout'):
+                    console.print("♻️ Recovered after monitor timeout (artifact card was present)", style="yellow")
+                console.print("💡 A ready artifact can still have a disabled 'Copy link' — that is a", style="dim")
+                console.print("   notebook-sharing gate, not a generation failure.", style="dim")
+                console.print("🔗 Browser kept open for next command", style="dim")
+            else:
+                console.print("❌ Artifact generation failed or timed out", style="red")
+                console.print("💡 Check 'deepdiver studio list' — the artifact may still exist", style="yellow")
+
+        except Exception as e:
+            console.print(f"❌ Error: {e}", style="red")
+
+    asyncio.run(run_generation())
+
+
+@studio.command(name='slide-deck')
+@click.option('--format', '-f',
+              type=click.Choice(['presenter', 'detailed'], case_sensitive=False),
+              help='presenter = spoken/explanatory deck; detailed = dense leave-behind')
+@click.option('--language', '-l', default=None, help='Deck language')
+@click.option('--length', type=click.Choice(['short', 'default', 'long'], case_sensitive=False),
+              help='Deck length')
+@click.option('--focus', help='Free-text deck brief (audience, tone, slide count, emphases)')
+@click.option('--notebook-id', '-n', help='Notebook ID (uses current page if not provided)')
+@cdp_url_option
+@click.option('--config', '-c', default='deepdiver/deepdiver.yaml',
+              help='Path to configuration file')
+def studio_slide_deck(format: Optional[str], language: Optional[str], length: Optional[str],
+                      focus: Optional[str], notebook_id: Optional[str],
+                      cdp_url: str, config: str):
+    """Generate a Slide Deck through the Studio tile.
+
+    🖼️ Presenter Slides for a spoken/explanatory deck, Detailed Deck for a
+    denser leave-behind. Tip: upload a short deck-brief source first so the
+    deck knows its audience.
+
+    Example:
+        deepdiver studio slide-deck --format presenter \\
+          --focus "Explain the bridge architecture for new operators" -n abc-123
+    """
+    console.print("🖼️ Generating Slide Deck...", style="blue")
+    _run_studio_generation('slide_deck', format, language, length, focus,
+                           notebook_id, cdp_url, config)
+
+
+@studio.command(name='generate')
+@click.argument('artifact_type')
+@click.option('--format', '-f', help='Family-specific format when supported')
+@click.option('--language', '-l', default=None, help='Output language')
+@click.option('--length', help='Length option when supported')
+@click.option('--focus', help='Free-text prompt when supported')
+@click.option('--notebook-id', '-n', help='Notebook ID (uses current page if not provided)')
+@cdp_url_option
+@click.option('--config', '-c', default='deepdiver/deepdiver.yaml',
+              help='Path to configuration file')
+def studio_generate(artifact_type: str, format: Optional[str], language: Optional[str],
+                    length: Optional[str], focus: Optional[str], notebook_id: Optional[str],
+                    cdp_url: str, config: str):
+    """Generate any Studio artifact family by name.
+
+    ARTIFACT_TYPE is one of: audio_overview, slide_deck, video_overview,
+    mind_map, reports, flashcards, quiz, infographic, data_table
+    (display labels like "Slide Deck" also work).
+
+    Examples:
+        deepdiver studio generate mind_map -n abc-123
+        deepdiver studio generate quiz --focus "Focus on chapter 3" -n abc-123
+        deepdiver studio generate video_overview --language French -n abc-123
+    """
+    if normalize_artifact_type(artifact_type) is None:
+        console.print(f"❌ Unknown artifact type: {artifact_type}", style="red")
+        console.print(f"💡 Known types: {', '.join(list_artifact_type_keys())}", style="yellow")
+        return
+
+    console.print(f"🎨 Generating Studio artifact: {artifact_type}", style="blue")
+    _run_studio_generation(artifact_type, format, language, length, focus,
+                           notebook_id, cdp_url, config)
+
+
+@studio.command(name='list')
+@click.option('--notebook-id', '-n', help='Notebook ID (uses current page if not provided)')
+@cdp_url_option
+@click.option('--config', '-c', default='deepdiver/deepdiver.yaml',
+              help='Path to configuration file')
+def studio_list(notebook_id: Optional[str], cdp_url: str, config: str):
+    """List artifact cards currently visible in the Studio panel."""
+    from .notebooklm_automator import NotebookLMAutomator
+
+    console.print("📋 Listing Studio artifacts...", style="blue")
+
+    async def run_list():
+        automator = NotebookLMAutomator(config, cdp_url_override=cdp_url)
+
+        try:
+            if not await automator.connect_to_browser():
+                console.print("❌ Failed to connect to browser", style="red")
+                return
+
+            if notebook_id:
+                if not await automator.navigate_to_notebook(notebook_id=notebook_id):
+                    console.print("❌ Failed to navigate to notebook", style="red")
+                    return
+                await automator.dismiss_rebrand_modal()
+
+            artifacts = await automator.list_studio_artifacts()
+            if not artifacts:
+                console.print("📭 No artifact cards visible in the Studio panel", style="yellow")
+                return
+
+            console.print(f"📦 {len(artifacts)} artifact(s):", style="bold green")
+            for artifact in artifacts:
+                family = artifact.get('family_label') or 'Unknown family'
+                title = artifact.get('title') or 'Untitled'
+                playable = '▶️ downloadable' if artifact.get('playable') else '—'
+                console.print(f"  • [{family}] {title} {playable}", style="cyan")
+                if artifact.get('details'):
+                    console.print(f"      {artifact['details']}", style="dim")
+            console.print("🔗 Browser kept open for next command", style="dim")
+        except Exception as e:
+            console.print(f"❌ Error: {e}", style="red")
+
+    asyncio.run(run_list())
+
+
+@studio.command(name='download')
+@click.option('--notebook-id', '-n', help='Notebook ID (uses current page if not provided)')
+@click.option('--output', '-o', default=None,
+              help='Output directory (default: STUDIO_SETTINGS.artifact_download_dir)')
+@cdp_url_option
+@click.option('--config', '-c', default='deepdiver/deepdiver.yaml',
+              help='Path to configuration file')
+def studio_download(notebook_id: Optional[str], output: Optional[str],
+                    cdp_url: str, config: str):
+    """Download all downloadable artifacts + write manifest.json.
+
+    ⬇️ The end-of-run export: every downloadable artifact lands in the
+    output directory with a manifest.json (title, path, sha256, size, media
+    probe) — ready to ship to other devices.
+
+    Example:
+        deepdiver studio download -n abc-123 -o ./output/artifacts/run-42
+    """
+    from .notebooklm_automator import NotebookLMAutomator
+    from .session_tracker import SessionTracker
+
+    console.print("⬇️ Downloading Studio artifacts...", style="blue")
+
+    async def run_download():
+        tracker = SessionTracker()
+        tracker.load_current_session()
+        automator = NotebookLMAutomator(config, cdp_url_override=cdp_url,
+                                        session_tracker=tracker)
+
+        try:
+            if not await automator.connect_to_browser():
+                console.print("❌ Failed to connect to browser", style="red")
+                return
+
+            output_dir = output
+            if not output_dir:
+                base = automator.config.get('STUDIO_SETTINGS', {}).get(
+                    'artifact_download_dir', './output/artifacts')
+                stamp = datetime.now().strftime('%Y%m%dT%H%M%S')
+                output_dir = os.path.join(base, stamp)
+
+            manifest = await automator.download_all_artifacts(output_dir, notebook_id=notebook_id)
+
+            if manifest.get('error'):
+                console.print(f"❌ {manifest['error']}", style="red")
+                return
+
+            console.print(f"✅ Downloaded {len(manifest['downloads'])} artifact(s)", style="green")
+            for entry in manifest['downloads']:
+                size_mb = entry['size'] / (1024 * 1024)
+                console.print(f"  • {entry['title']} → {entry['path']} ({size_mb:.1f} MB)", style="cyan")
+            if manifest['skipped']:
+                console.print(f"⏭️ Skipped {len(manifest['skipped'])}:", style="yellow")
+                for item in manifest['skipped']:
+                    console.print(f"  • {item['title']}: {item['reason']}", style="dim")
+            if manifest.get('manifest_path'):
+                console.print(f"🗂️ Manifest: {manifest['manifest_path']}", style="bold blue")
+            console.print("🔗 Browser kept open for next command", style="dim")
+        except Exception as e:
+            console.print(f"❌ Error: {e}", style="red")
+
+    asyncio.run(run_download())
+
+
+# ═══════════════════════════════════════════════════════════════
+# CHROME COMMANDS
+# 🧵 Synth: Browser lifecycle with profile-clone support
+# ═══════════════════════════════════════════════════════════════
+
+@cli.group()
+def chrome():
+    """Chrome browser lifecycle commands."""
+    pass
+
+
+@chrome.command(name='launch')
+@click.option('--port', default=9222, help='CDP port (default: 9222)')
+@click.option('--user-data-dir', default=None, help='Chrome user data directory')
+@click.option('--clone-profile', default=None,
+              help='Clone this authenticated profile (e.g. "Profile 3") into a '
+                   'disposable user-data-dir so the live profile is never touched')
+@click.option('--profile-root', default=None,
+              help='Chrome config root for cloning (default: ~/.config/google-chrome)')
+@click.option('--display', default=None,
+              help='X display (default: $DISPLAY or :0 — needed from SSH/tmux)')
+def chrome_launch(port: int, user_data_dir: Optional[str], clone_profile: Optional[str],
+                  profile_root: Optional[str], display: Optional[str]):
+    """Launch Chrome with CDP enabled (SSH/tmux-safe).
+
+    Passes DISPLAY/XAUTHORITY through so launching from a non-interactive
+    SSH or tmux context works, binds the debug port to 127.0.0.1, and can
+    clone an authenticated profile instead of touching the live one.
+
+    Examples:
+        deepdiver chrome launch
+        deepdiver chrome launch --clone-profile "Profile 3"
+        deepdiver chrome launch --port 9223 --display :0
+    """
+    console.print(f"🚀 Launching Chrome with CDP on port {port}...", style="blue")
+    if clone_profile:
+        console.print(f"👤 Cloning profile: {clone_profile}", style="cyan")
+
+    if launch_chrome_cdp(port=port, user_data_dir=user_data_dir,
+                         clone_from_profile=clone_profile,
+                         profile_root=profile_root, display=display):
+        console.print(f"✅ Chrome launched — CDP live at http://127.0.0.1:{port}", style="green")
+        console.print("💡 Log in to NotebookLM in the Chrome window, then: deepdiver test", style="yellow")
+    else:
+        console.print("❌ Chrome launch failed or CDP did not come up", style="red")
+        console.print("💡 From SSH/tmux, X env is required: try --display :0", style="yellow")
+
+
+# ═══════════════════════════════════════════════════════════════
+# SKILLS COMMANDS
+# ♠️ Nyro: The package carries its own operating knowledge
+# ═══════════════════════════════════════════════════════════════
+
+@cli.group()
+def skills():
+    """Agent skills bundled with DeepDiver.
+
+    DeepDiver ships SKILL.md operating manuals inside the package so agents
+    can discover them and install them into their own skill directories.
+    """
+    pass
+
+
+@skills.command(name='list')
+def skills_list():
+    """List skills bundled inside this DeepDiver installation."""
+    from .skills_manager import list_bundled_skills, AGENT_TARGETS
+
+    bundled = list_bundled_skills()
+    if not bundled:
+        console.print("📭 No skills bundled in this installation", style="yellow")
+        return
+
+    console.print(f"📚 Bundled skills ({len(bundled)}):", style="bold green")
+    for skill in bundled:
+        console.print(f"\n  🎓 {skill['name']}", style="bold cyan")
+        if skill['description']:
+            console.print(f"     {skill['description']}", style="dim")
+        console.print(f"     Files: {', '.join(skill['files'])}", style="dim")
+
+    console.print("\n💡 Install into your agent:", style="yellow")
+    for agent, path in AGENT_TARGETS.items():
+        console.print(f"   deepdiver skills install --agent {agent}   →  {path}", style="cyan")
+    console.print("   deepdiver skills install --to <dir>", style="cyan")
+
+
+@skills.command(name='show')
+@click.argument('name')
+def skills_show(name: str):
+    """Print a bundled skill's SKILL.md content."""
+    from .skills_manager import get_bundled_skill
+
+    skill = get_bundled_skill(name)
+    if not skill:
+        console.print(f"❌ No bundled skill named: {name}", style="red")
+        console.print("💡 See available skills with: deepdiver skills list", style="yellow")
+        return
+
+    skill_md = Path(skill['path']) / 'SKILL.md'
+    console.print(skill_md.read_text(encoding='utf-8'))
+
+
+@skills.command(name='install')
+@click.argument('name', required=False)
+@click.option('--agent', type=click.Choice(['claude', 'claude-project', 'hermes', 'codex']),
+              help='Install into a known agent skill directory')
+@click.option('--to', 'target_dir', default=None,
+              help='Install into an explicit skills directory')
+@click.option('--force', is_flag=True, default=False,
+              help='Overwrite an already-installed copy')
+def skills_install(name: Optional[str], agent: Optional[str],
+                   target_dir: Optional[str], force: bool):
+    """Install bundled skill(s) into an agent's skill directory.
+
+    With NAME, installs that one skill; without it, installs all bundled
+    skills. Target comes from --agent (claude, claude-project, hermes,
+    codex) or an explicit --to directory.
+
+    Examples:
+        deepdiver skills install --agent claude
+        deepdiver skills install notebooklm-automation --to ~/.hermes/skills/development
+    """
+    from .skills_manager import (
+        install_skill, install_all_skills, resolve_install_target,
+    )
+
+    target = resolve_install_target(agent=agent, target_dir=target_dir)
+    if target is None:
+        console.print("❌ No install target — use --agent or --to", style="red")
+        return
+
+    console.print(f"📦 Installing into: {target}", style="blue")
+
+    if name:
+        results = [install_skill(name, target, force=force)]
+    else:
+        results = install_all_skills(target, force=force)
+
+    for result in results:
+        if result.get('installed'):
+            console.print(f"✅ {result['name']} → {result['destination']}", style="green")
+        elif result.get('skipped'):
+            console.print(f"⏭️ {result['name']}: {result['skipped']}", style="yellow")
+        else:
+            console.print(f"❌ {result['name']}: {result.get('error')}", style="red")
 
 
 def main():

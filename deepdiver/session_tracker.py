@@ -19,6 +19,24 @@ from typing import Dict, List, Optional, Any
 import yaml
 
 
+def compute_missing_sources(existing_filenames, source_paths):
+    """
+    Diff local source files against filenames already in a notebook.
+
+    Args:
+        existing_filenames: Iterable of filenames already uploaded
+        source_paths: Local paths that should end up in the notebook
+
+    Returns:
+        List of paths (original order) whose basename is not yet uploaded.
+    """
+    existing = {name for name in (existing_filenames or []) if name}
+    return [
+        path for path in (source_paths or [])
+        if os.path.basename(path) not in existing
+    ]
+
+
 class SessionTracker:
     """
     Manages DeepDiver sessions and metadata.
@@ -580,6 +598,58 @@ class SessionTracker:
             self.logger.error(f"❌ Failed to add artifact to notebook: {e}")
             return False
 
+    def record_artifact_download(self, notebook_id: str, artifact_id: Optional[str],
+                                 download_meta: Dict[str, Any]) -> bool:
+        """
+        Record a completed artifact download in the session.
+
+        Writes the local path/sha256/size back into the matching artifact
+        entry (or appends a download-only entry when the artifact was never
+        tracked), so downstream cross-device sync can find the files from
+        session metadata alone.
+        """
+        try:
+            if not self.current_session:
+                self.logger.warning("No active session")
+                return False
+
+            notebook = self.get_notebook_by_id(notebook_id)
+            if not notebook:
+                self.logger.warning(f"Notebook {notebook_id} not found")
+                return False
+
+            artifacts = notebook.setdefault('artifacts', [])
+            target = None
+            if artifact_id:
+                for artifact in artifacts:
+                    if artifact.get('artifact_id') == artifact_id:
+                        target = artifact
+                        break
+
+            if target is None:
+                target = {
+                    'artifact_id': artifact_id,
+                    'type': download_meta.get('family_label') or 'unknown',
+                    'title': download_meta.get('title'),
+                    'status': 'downloaded',
+                }
+                artifacts.append(target)
+
+            target['download_path'] = download_meta.get('path')
+            target['download_sha256'] = download_meta.get('sha256')
+            target['download_size'] = download_meta.get('size')
+            target['downloaded_at'] = download_meta.get('downloaded_at', datetime.now().isoformat())
+            if download_meta.get('media'):
+                target['media'] = download_meta['media']
+
+            self.update_notebook(notebook_id, {'artifacts': artifacts})
+            self.logger.info(f"✅ Download recorded for artifact {artifact_id} in notebook {notebook_id}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to record artifact download: {e}")
+            return False
+
     def list_notebook_artifacts(self, notebook_id: str) -> List[Dict[str, Any]]:
         """
         List all Studio artifacts for a notebook.
@@ -755,6 +825,32 @@ class SessionTracker:
                     self.current_session = json.load(f)
         except Exception as e:
             self.logger.error(f"Error loading current session: {e}")
+
+    def load_current_session(self) -> bool:
+        """
+        Explicitly load the active session from disk.
+
+        A fresh SessionTracker does NOT reflect current_session.json until
+        this is called — never trust a new instance to auto-load. Public
+        entry point for the loader used throughout the CLI.
+
+        Returns:
+            bool: True if an active session is now loaded.
+        """
+        self._load_current_session()
+        return self.current_session is not None
+
+    def get_notebook_source_filenames(self, notebook_id: str) -> List[str]:
+        """
+        Filenames already uploaded to a notebook, per the session tracker.
+
+        The tracker is the authoritative continuity layer during resumed
+        runs — packet result.json files can lag behind reality.
+        """
+        return [
+            src.get('filename') for src in self.list_notebook_sources(notebook_id)
+            if src.get('filename')
+        ]
     
     def cleanup_old_sessions(self, days: int = 30) -> int:
         """
