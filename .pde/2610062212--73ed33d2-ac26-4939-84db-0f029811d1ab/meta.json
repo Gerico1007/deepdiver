@@ -1,0 +1,31 @@
+{
+  "schema_version": 10,
+  "root_pde_id": "73ed33d2-ac26-4939-84db-0f029811d1ab",
+  "origin": {
+    "user": "mia",
+    "host": "gaia",
+    "platform": "linux",
+    "miaco_version": "0.20.5",
+    "git": {
+      "commit": "2760b136314f2ffec4e5cc2d9d57c8c53659a46b",
+      "branch": "main",
+      "dirty": false
+    },
+    "invoked_by": {
+      "kind": "agent",
+      "evidence": [
+        "env:CLAUDECODE",
+        "env:CLAUDE_CODE_ENTRYPOINT",
+        "no-tty:stdin"
+      ]
+    }
+  },
+  "engine": "claude",
+  "model": "opus",
+  "session_id": "9e683568-91f3-4454-a0e2-39be7ea49092",
+  "session_id_source": "engine",
+  "strategy": "standard",
+  "strategy_pass_count": 1,
+  "created_at": "2026-10-07T02:12:37.387Z",
+  "updated_at": "2026-10-07T02:12:37.472Z"
+}

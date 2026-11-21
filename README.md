@@ -137,27 +137,21 @@ deepdiver session write "Uploaded research paper for podcast generation"
 # Check session status
 deepdiver session status
 
-# Open session in browser
-deepdiver session open
-
-# Clear current session
-deepdiver session clear
+# Close browser session (session data is preserved)
+deepdiver session close
 ```
 
 ### Podcast Commands
 
 ```bash
-# Create podcast from document
-deepdiver podcast create --source research.pdf --title "Research Insights"
+# One-shot: upload document → generate Audio Overview → download mp3
+deepdiver podcast research.pdf --title "Research Insights" --output ./output
 
-# Create podcast from URL
-deepdiver podcast create --source https://example.com/article --title "Web Article Podcast"
+# Preferred fine-grained flow: generate with customization + download
+deepdiver studio audio --notebook-id abc-123 --download
 
-# List generated podcasts
-deepdiver podcast list
-
-# Download specific podcast
-deepdiver podcast download --id podcast-123
+# Download every downloadable artifact + manifest.json (cross-device export)
+deepdiver studio download --notebook-id abc-123 --output ./output/artifacts/run-42
 ```
 
 ### Notebook Commands
@@ -189,6 +183,10 @@ deepdiver notebook url --notebook-id abc-123
 
 # Share notebook with collaborator
 deepdiver notebook share --notebook-id abc-123 --email user@example.com
+
+# Resume an existing notebook: upload ONLY the sources it is missing
+deepdiver notebook resume abc-123 -s notes.md -s summary.pdf
+deepdiver notebook resume abc-123 --source-dir ./packet/sources
 ```
 
 ### Studio Commands
@@ -259,17 +257,87 @@ deepdiver studio audio \
 **Session Tracking**:
 All generated Audio Overviews are automatically tracked in your session with complete metadata (format, language, length, focus, generation time).
 
-### Content Commands
+### Multi-Artifact Studio Generation
+
+Beyond audio, DeepDiver generates the full Studio family through each
+tile's customization dialog:
 
 ```bash
-# Upload document to NotebookLM
-deepdiver content upload --file document.pdf
+# Slide decks: presenter (spoken) or detailed (dense leave-behind)
+deepdiver studio slide-deck --format presenter \
+  --focus "Explain the architecture for new operators" -n abc-123
 
-# Process content for podcast
-deepdiver content process --source document.pdf
+# Any Studio family by name
+deepdiver studio generate mind_map -n abc-123
+deepdiver studio generate quiz --focus "Focus on chapter 3" -n abc-123
+deepdiver studio generate video_overview --language French -n abc-123
 
-# Validate content quality
-deepdiver content validate --source document.pdf
+# See what's ready in the Studio panel
+deepdiver studio list -n abc-123
+
+# Reports: Interactive (embeds the notebook's studio items) or Document
+deepdiver studio report --prompt "Include only the infographic. Walk a viewer through the pipeline" -n abc-123
+deepdiver studio report --format document --template "Briefing Doc" -n abc-123
+
+# Show an artifact on screen (for a screenwalk); --play starts audio/video
+deepdiver studio open --family reports -n abc-123
+deepdiver studio open --family video_overview --play -n abc-123
+```
+
+Reports have no file download in Gemini Notebook; `studio download` saves
+each one from its viewer as Markdown and HTML.
+
+### Asking a Notebook
+
+```bash
+# The answer prints as Markdown with the notebook's citations as [n]
+deepdiver notebook ask abc-123 "Which corrections did the person speak aloud?" -o asked.md
+```
+
+Artifact types: `audio_overview`, `slide_deck`, `video_overview`,
+`mind_map`, `reports`, `flashcards`, `quiz`, `infographic`, `data_table`.
+
+Note: a ready artifact can show a disabled "Copy link" — that's a
+notebook-sharing gate, not a generation failure. Share the notebook first.
+
+### Artifact Download & Cross-Device Export
+
+```bash
+# Download all downloadable artifacts into one directory + manifest.json
+deepdiver studio download -n abc-123 -o ./output/artifacts/run-42
+```
+
+Each download records title, local path, sha256, byte size, and (when
+ffprobe is available) codec/duration — the manifest is what mesh-sync
+tooling needs to ship artifacts to other devices. Download paths are also
+written back into the session tracker.
+
+### Chrome Commands
+
+```bash
+# Launch Chrome with CDP (SSH/tmux-safe: passes DISPLAY/XAUTHORITY)
+deepdiver chrome launch
+
+# DeepDiver's own Chrome home (~/.chrome-deepdiver): sign in to Google once,
+# every later launch reuses it. --clone-profile seeds the home the first time.
+deepdiver chrome launch --clone-profile "Profile 3"
+deepdiver chrome status          # exit 0 signed in, 2 not signed in, 1 no Chrome
+
+# A sign-in made in a temporary clone: close that Chrome, then keep its folder
+deepdiver chrome adopt /tmp/deepdiver-chrome-XXXX
+```
+
+### Agent Skills
+
+DeepDiver ships agent-facing SKILL.md operating manuals inside the
+package, so any agent running the binary can learn to drive it:
+
+```bash
+deepdiver skills list                          # what's bundled
+deepdiver skills show notebooklm-automation    # read a skill
+deepdiver skills install --agent claude        # → ~/.claude/skills
+deepdiver skills install --agent hermes        # → ~/.hermes/skills/development
+deepdiver skills install --to /path/to/skills  # anywhere
 ```
 
 ---
@@ -480,6 +548,7 @@ This project follows the G.Music Assembly framework:
 - **[CONFIGURATION.md](CONFIGURATION.md)** - Configuration file discovery and setup guide
 - **[ROADMAP.md](ROADMAP.md)** - Project development roadmap and milestones
 - **[CLAUDE.md](CLAUDE.md)** - Assembly team configuration and workflow
+- **[Miadi Factory](docs/MIADI_FACTORY.md)** - What this fork supplies to the Miadi Factory (T6 Production), the review-to-notebook pipeline, install requirements, open decisions
 
 ### Implementation Guides
 - **[NotebookLM Studio Artifacts](docs/NOTEBOOKLM_STUDIO_ARTIFACTS.md)** - Complete implementation guide for all Studio artifact types:

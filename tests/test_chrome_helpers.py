@@ -148,6 +148,21 @@ class TestLaunchChromeCDP:
         call_args = mock_popen.call_args[0][0]
         assert any(custom_dir in str(arg) for arg in call_args)
 
+    @patch('deepdiver.notebooklm_automator.check_chrome_cdp_running')
+    @patch('deepdiver.notebooklm_automator.find_chrome_executable')
+    @patch('subprocess.Popen')
+    def test_launch_chrome_skips_first_run_dialogs(self, mock_popen, mock_find, mock_check):
+        """A cloned profile has no 'First Run' sentinel; the Terms of Service
+        window it triggers keeps the DevTools server from starting."""
+        mock_find.return_value = 'google-chrome'
+        mock_check.return_value = True
+
+        launch_chrome_cdp(user_data_dir='/tmp/test-chrome')
+
+        call_args = mock_popen.call_args[0][0]
+        assert '--no-first-run' in call_args
+        assert '--no-default-browser-check' in call_args
+
 
 class TestChromeHelperIntegration:
     """Integration tests for Chrome helper functions."""
