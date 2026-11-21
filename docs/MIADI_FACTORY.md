@@ -118,7 +118,7 @@ A search for an "Add" button also matched the header's "Create notebook" button,
 
 No new package is needed under `jgwill/Miadi/packages/` to begin. DeepDiver is already a Python package with its own CLI and bundled skill. The options, in the order they depend on each other:
 
-- **O1.** Offer this fork's changes to `Gerico1007/deepdiver` as a pull request, so Jerry can release them to PyPI.
+- **O1.** Offer this fork's changes to `Gerico1007/deepdiver` as a pull request, so Jerry can release them to PyPI. Opened on 2026-11-20 as Gerico1007/deepdiver#33, from this fork's `main`. It includes the five commits of Gerico1007/deepdiver#26.
 - **O2.** Add `deepdiver` to Miadi's Python umbrella (`packages/miadi/py`, which already depends on `ironsilk`), for example as an extra `miadi[production]`, and give `scripts/ops/miadi-delivery.sh` a part that checks the installed version, as it does for `ironsilk`. Depends on O1: PyPI refuses a package whose dependency is a git URL, so a published `miadi` cannot depend on this fork directly.
 - **O3.** A plugin in the orchestration kit for T6. Done on 2026-10-06: `claude/miadi-deepdiver` 0.1.0 in `jgwill/miadi-orchestration-kit`, with the `screenwalk-notebook` skill and `/notebook-from-reviews`. It installs DeepDiver from this fork until O1 lands.
 
@@ -127,7 +127,7 @@ An MCP server around DeepDiver was considered and left out: no consumer needs on
 ## Open, each with its owner
 
 - **Q1.** The team's name, D11. William.
-- **Q2.** Answered for now. On 2026-10-08 William wrote that Jerry's repository is one he is "not so entertained in contributing" to right now, so the pull request of O1 is not opened, and O2 waits with it.
+- **Q2.** Answered for now. On 2026-10-08 William wrote that Jerry's repository is one he is "not so entertained in contributing" to right now, so the pull request of O1 is not opened, and O2 waits with it. On 2026-11-20 the pull request was asked for and opened (O1). O2 waits for a PyPI release that contains it.
 - **Q3.** Whether O2 goes into `jgwill/Miadi`. Guillaume.
 - **Q4.** Settled by practice. An episode keeps a notebook's media in `<episode>/captures/notebook-<notebook id>/` with `manifest.json` and `asked.md`, as miadi-chronicle://550 keeps `captures/notebook-0ae51b4c-8ed2-4ee2-a641-2c7e88b7e2ea/`, and `jgwill/Miadi` d6f3ed7a, in `@miadi/episode-vessel` 0.4.0, serves that shape to the episode's readers.
 - **Q5.** Whether to delete the three empty "Untitled notebook" notebooks and the test notebook `78507190…`. The AVA account's owner.
